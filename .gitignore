@@ -2,3 +2,4 @@ lib/gpu_kernels.cu.o
 test/__pycache__/test_f_grid.cpython-27-PYTEST.pyc
 test/__pycache__/test_particles2grid.cpython-27-PYTEST.pyc
 python/SmoothParticleNets/_ext/_ext.so
+*.pyc

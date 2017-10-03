@@ -54,3 +54,5 @@ int spnc_fgrid_backward_cuda(THCudaTensor *locs, THCudaTensor *grad_output, THCu
 
     return cuda_add_to_locs(plocs, pdata, batch_size, nlocs, dlocs, dim_sizes, ddata, data_dims, out, stream);
 }
+
+
