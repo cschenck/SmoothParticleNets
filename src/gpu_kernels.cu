@@ -239,6 +239,117 @@ int cuda_particles2grid(float* points,
 }
 
 
+
+__global__
+void kernel_trilinear_grid2particles(float* grid, int batch_size, float3 grid_lower, int3 grid_dims, 
+	float3 grid_steps, int data_dims, float4* particles, int nparticles, float* data)
+{
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	int stride = blockDim.x * gridDim.x;
+	for (int i = index; i < batch_size*nparticles*data_dims; i += stride)
+	{
+		const int b = i/(nparticles*data_dims);
+		const float4& p = particles[(i - b*nparticles*data_dims)/data_dims];
+		const int d = i%data_dims;
+		float px = p.x;
+		float py = p.y;
+		float pz = p.z;
+		float pi = (px - grid_lower.x)/grid_steps.x - 0.5;
+		float pj = (py - grid_lower.y)/grid_steps.y - 0.5;
+		float pk = (pz - grid_lower.z)/grid_steps.z - 0.5;
+		float ii = pi - floorf(pi);
+		float jj = pj - floorf(pj);
+		float kk = pk - floorf(pk);
+		float& dd = data[i];
+		dd = 0;
+		for(int di = 0; di < 2; ++di)
+		{
+			for(int dj = 0; dj < 2; ++dj)
+			{
+				for(int dk = 0; dk < 2; ++dk)
+				{
+					int ci = (int)floorf(pi + di);
+					int cj = (int)floorf(pj + dj);
+					int ck = (int)floorf(pk + dk);
+					float v = grid[b*grid_dims.x*grid_dims.y*grid_dims.z*data_dims +
+								   ci*grid_dims.y*grid_dims.z*data_dims + 
+								   cj*grid_dims.z*data_dims + 
+								   ck*data_dims + 
+								   d];
+					dd += v*(di ? ii : 1 - ii)*(dj ? jj : 1 - jj)*(dk ? kk : 1 - kk);
+				}
+			}
+		}
+	}
+}
+int cuda_grid2particles(float* grid, 
+					     int batch_size,
+					     float grid_lowerx,
+					     float grid_lowery,
+					     float grid_lowerz,
+						 int grid_dimsx,
+						 int grid_dimsy,
+						 int grid_dimsz,
+						 float grid_stepsx,
+						 float grid_stepsy,
+						 float grid_stepsz,
+						 int data_dims, 
+						 float* points, 
+						 int nparticles,
+					     float* data,  
+						 cudaStream_t stream)
+{
+	float3 grid_lower = make_float3(grid_lowerx, grid_lowery, grid_lowerz);
+	int3 grid_dims = make_int3(grid_dimsx, grid_dimsy, grid_dimsz);
+	float3 grid_steps = make_float3(grid_stepsx, grid_stepsy, grid_stepsz);
+	float4* particles = (float4*)points;
+
+	int nops = batch_size*nparticles*data_dims;
+    int numBlocks = min(MAX_BLOCKS, (int)ceil(nops/256.0f));
+    dim3 blocks(numBlocks);
+    dim3 threads(256);
+
+    kernel_trilinear_grid2particles<<<blocks, threads, 0, stream>>>(grid, batch_size, grid_lower,
+    	grid_dims, grid_steps, data_dims, particles, nparticles, data);
+    cudaDeviceSynchronize();
+    // check for errors
+	cudaError_t err = cudaGetLastError();
+	if (err != cudaSuccess) {
+		printf("error in cuda_particles2grid: %s\n", cudaGetErrorString(err));
+		return 0;
+	}
+    return 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* TEST CODE */
 void af(float* ptr, float value) {
 	cudaMemcpy(ptr, &value, sizeof(float), cudaMemcpyHostToDevice);
 }
