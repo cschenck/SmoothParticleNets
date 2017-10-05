@@ -13,6 +13,7 @@ class Grid2ParticlesFunction(torch.autograd.Function):
         self.grid_steps = grid_steps
 
     def forward(self, grid, locs):
+        self.save_for_backward(grid, locs)
         s = locs.size()
         has_batch = True
         if len(s) == 2: # No batch size included.
@@ -43,7 +44,28 @@ class Grid2ParticlesFunction(torch.autograd.Function):
 
 
     def backward(self, grad_output):
-        raise NotImplementedError("Backwards for the Grid2Particles layer has not been implemented.")
+        grid, locs = self.saved_tensors
+        s = locs.size()
+        has_batch = True
+        if len(s) == 2: # No batch size included.
+            locs = locs.unsqueeze(0)
+            grid = grid.unsqueeze(0)
+            grad_output = grad_output.unsqueeze(0)
+            s = locs.size()
+            has_batch = False
+
+        ret = grid.new(grid.size())
+        locs_ret = locs.new(locs.size()).fill_(0)
+        if locs.is_cuda:
+            _ext.spnc_grid2particles_backward_cuda(locs, grad_output, ret, self.grid_lower[0], self.grid_lower[1],
+                self.grid_lower[2], self.grid_steps[0], self.grid_steps[1], self.grid_steps[2])
+        else:
+            raise NotImplementedError("Grid2Particles backward is only implemented on the GPU (for now).")
+        
+        if not has_batch:
+            ret = ret.squeeze(0)
+            locs_ret = locs_ret.squeeze(0)
+        return ret, locs_ret
 
 
 

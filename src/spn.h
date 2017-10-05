@@ -13,3 +13,7 @@ int spnc_particles2grid_forward_cuda(THCudaTensor *locs, THCudaTensor *data, THC
 int spnc_grid2particles_forward_cuda(THCudaTensor *grid, float grid_lowerx, float grid_lowery, 
 	float grid_lowerz, float grid_stepsx, float grid_stepsy, float grid_stepsz, 
 	THCudaTensor *locs, THCudaTensor *data);
+
+int spnc_grid2particles_backward_cuda(THCudaTensor *locs, THCudaTensor *ddata, THCudaTensor *dgrid, 
+	float grid_lowerx, float grid_lowery, float grid_lowerz, float grid_stepsx, float grid_stepsy, 
+	float grid_stepsz);

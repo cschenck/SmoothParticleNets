@@ -48,6 +48,10 @@ int cuda_grid2particles(float* grid,
 					     float* data,  
 						 cudaStream_t stream);
 
+int cuda_grid2particles_backward(float* points, float* ddata, int batch_size, int nparticles, int data_dims,
+    float* dgrid, float grid_lowerx, float grid_lowery, float grid_lowerz, int grid_dimsx, int grid_dimsy,
+    int grid_dimsz, float grid_stepsx, float grid_stepsy, float grid_stepsz, cudaStream_t stream);
+
 #ifdef __cplusplus
 }
 #endif

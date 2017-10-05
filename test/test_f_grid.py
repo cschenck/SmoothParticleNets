@@ -47,7 +47,15 @@ def test_FGrid():
     _output = fgrid(locs, value_grid).cpu()
     np.testing.assert_array_equal(_output.data.numpy(), output.data.numpy())
 
-    # Make the derivatices be grad_output, assuming the forward pass was correct.
+    # Make the derivatives be grad_output, assuming the forward pass was correct.
     loss = torch.sum(0.5*(-grad_output + output - _output)**2)
     loss.backward()
     np.testing.assert_array_equal(value_grid.grad.data.cpu().numpy(), grad_input.data.numpy())
+
+    def fn(grid):
+      return (fgrid(locs, grid),)
+    assert torch.autograd.gradcheck(fn, (value_grid,), eps=1e-2)
+
+
+if __name__ == '__main__':
+    test_FGrid()

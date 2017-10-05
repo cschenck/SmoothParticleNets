@@ -42,16 +42,18 @@ def test_grid2particles():
 
     data = fn(locs[:, :-1])
 
-    locs = torch.autograd.Variable(torch.FloatTensor(locs).cuda())
-    data = torch.autograd.Variable(torch.FloatTensor(data))
-    grid = torch.autograd.Variable(torch.FloatTensor(grid).cuda())
+    locs = torch.autograd.Variable(torch.FloatTensor(locs).cuda(), requires_grad=False)
+    data = torch.autograd.Variable(torch.FloatTensor(data), requires_grad=False)
+    grid = torch.autograd.Variable(torch.FloatTensor(grid).cuda(), requires_grad=True)
 
     grid2particles = spn.Grid2Particles(grid_lower, grid_steps)
 
     _output = grid2particles(grid, locs).cpu()
-    for i in range(data.data.numpy().shape[0]):
-      print(", ".join("%10f"%x for x in data.data.numpy()[i, :]) + " | " + ", ".join("%10f"%x for x in _output.data.numpy()[i, :]))
     np.testing.assert_array_almost_equal(_output.data.numpy(), data.data.numpy(), decimal=3)
+
+    def fn(ggggggggrid):
+      return (grid2particles(ggggggggrid, locs),)
+    assert torch.autograd.gradcheck(fn, (grid,), eps=1e-2)
 
 
 

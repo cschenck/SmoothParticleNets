@@ -212,7 +212,7 @@ int cuda_particles2grid(float* points,
 						float radius, 
 						cudaStream_t stream)
 {
-	cudaMemset(grid, 0, sizeof(float)*grid_dimsx*grid_dimsy*grid_dimsz*data_dims);
+	cudaMemset(grid, 0, sizeof(float)*batch_size*grid_dimsx*grid_dimsy*grid_dimsz*data_dims);
 	float3 grid_lower = make_float3(grid_lowerx, grid_lowery, grid_lowerz);
 	int3 grid_dims = make_int3(grid_dimsx, grid_dimsy, grid_dimsz);
 	float3 grid_steps = make_float3(grid_stepsx, grid_stepsy, grid_stepsz);
@@ -268,9 +268,9 @@ void kernel_trilinear_grid2particles(float* grid, int batch_size, float3 grid_lo
 			{
 				for(int dk = 0; dk < 2; ++dk)
 				{
-					int ci = (int)floorf(pi + di);
-					int cj = (int)floorf(pj + dj);
-					int ck = (int)floorf(pk + dk);
+					int ci = (int)fmaxf(0, fminf(grid_dims.x - 1, floorf(pi + di)));
+					int cj = (int)fmaxf(0, fminf(grid_dims.y - 1, floorf(pj + dj)));
+					int ck = (int)fmaxf(0, fminf(grid_dims.z - 1, floorf(pk + dk)));
 					float v = grid[b*grid_dims.x*grid_dims.y*grid_dims.z*data_dims +
 								   ci*grid_dims.y*grid_dims.z*data_dims + 
 								   cj*grid_dims.z*data_dims + 
@@ -315,13 +315,79 @@ int cuda_grid2particles(float* grid,
     // check for errors
 	cudaError_t err = cudaGetLastError();
 	if (err != cudaSuccess) {
-		printf("error in cuda_particles2grid: %s\n", cudaGetErrorString(err));
+		printf("error in cuda_grid2particles: %s\n", cudaGetErrorString(err));
 		return 0;
 	}
     return 1;
 }
 
 
+__global__
+void kernel_backward_grid2particles(float4* particles, float* ddata, int batch_size, int nparticles, int data_dims,
+    float* dgrid, float3 grid_lower, int3 grid_dims, float3 grid_steps)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < batch_size*nparticles*data_dims; i += stride)
+    {
+        const int b = i/(nparticles*data_dims);
+        const float4& p = particles[(i - b*nparticles*data_dims)/data_dims];
+        const int d = i%data_dims;
+        float px = p.x;
+        float py = p.y;
+        float pz = p.z;
+        float pi = (px - grid_lower.x)/grid_steps.x - 0.5;
+        float pj = (py - grid_lower.y)/grid_steps.y - 0.5;
+        float pk = (pz - grid_lower.z)/grid_steps.z - 0.5;
+        float ii = pi - floorf(pi);
+        float jj = pj - floorf(pj);
+        float kk = pk - floorf(pk);
+        for(int di = 0; di < 2; ++di)
+        {
+            for(int dj = 0; dj < 2; ++dj)
+            {
+                for(int dk = 0; dk < 2; ++dk)
+                {
+                    int ci = (int)fmaxf(0, fminf(grid_dims.x - 1, floorf(pi + di)));
+					int cj = (int)fmaxf(0, fminf(grid_dims.y - 1, floorf(pj + dj)));
+					int ck = (int)fmaxf(0, fminf(grid_dims.z - 1, floorf(pk + dk)));
+                    float* v = dgrid + b*grid_dims.x*grid_dims.y*grid_dims.z*data_dims +
+                                      ci*grid_dims.y*grid_dims.z*data_dims + 
+                                      cj*grid_dims.z*data_dims + 
+                                      ck*data_dims + 
+                                      d;
+                    atomicAdd(v, ddata[i]*(di ? ii : 1 - ii)*(dj ? jj : 1 - jj)*(dk ? kk : 1 - kk));
+                }
+            }
+        }
+    }
+}
+int cuda_grid2particles_backward(float* points, float* ddata, int batch_size, int nparticles, int data_dims,
+    float* dgrid, float grid_lowerx, float grid_lowery, float grid_lowerz, int grid_dimsx, int grid_dimsy,
+    int grid_dimsz, float grid_stepsx, float grid_stepsy, float grid_stepsz, cudaStream_t stream)
+{
+    cudaMemset(dgrid, 0, sizeof(float)*batch_size*grid_dimsx*grid_dimsy*grid_dimsz*data_dims);
+    float3 grid_lower = make_float3(grid_lowerx, grid_lowery, grid_lowerz);
+    int3 grid_dims = make_int3(grid_dimsx, grid_dimsy, grid_dimsz);
+    float3 grid_steps = make_float3(grid_stepsx, grid_stepsy, grid_stepsz);
+    float4* particles = (float4*)points;
+
+    int nops = batch_size*nparticles*data_dims;
+    int numBlocks = min(MAX_BLOCKS, (int)ceil(nops/256.0f));
+    dim3 blocks(numBlocks);
+    dim3 threads(256);
+
+    kernel_backward_grid2particles<<<blocks, threads, 0, stream>>>(particles, ddata, batch_size, nparticles, 
+        data_dims, dgrid, grid_lower, grid_dims, grid_steps);
+    cudaDeviceSynchronize();
+    // check for errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("error in cuda_grid2particles_backward: %s\n", cudaGetErrorString(err));
+        return 0;
+    }
+    return 1;
+}
 
 
 
