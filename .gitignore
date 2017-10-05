@@ -5,3 +5,4 @@ python/SmoothParticleNets/_ext/_ext.so
 *.pyc
 python/SmoothParticleNets/_ext/__ext.so
 .cache/
+test/.cache/
