@@ -6,7 +6,7 @@ from torch.utils.ffi import create_extension
 
 CUDA_SRCS = ['gpu_kernels.cu']
 HEADERS = ['spn.h']
-SRCS = ['fgrid.c', 'cuda_layer_funcs.c']
+SRCS = ['cuda_layer_funcs.c']
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
 lib_dir = os.path.join(root_dir, "lib")
