@@ -5,7 +5,32 @@ import torch.autograd
 
 import _ext
 
+"""
+This class implements a function that uses the Smooth Particle Hydrodynamics
+(https://en.wikipedia.org/wiki/Smoothed-particle_hydrodynamics) function to 
+transform a continuous vector field represented by a set of particles to a
+grid representation. 
 
+The constructor takes as input 4 arguments:
+    -grid_shape: a 3-tuple of integers indicating the shape of the grid.
+    -grid_lower: a 3-tuple of xyz coordinates for the lower corner of the
+    grid (i.e., the outer corner of the (0,0,0) cell).
+    -grid_steps: a 3-tuple indicating the size of each side of the grid
+    cells in x, y, and z.
+    -radius: A floating point value for the radius to use in the kernel
+    function in the SPH equation.
+
+The forward function takes as input (N is the number of particles, B is
+the batch size):
+    -locs: a BxNx4 tensor of particle locations in xyzw format, where w is the 
+    INVERSE mass of the particle.
+    -data: a BxNxM tensor with M scalars for each particle.
+    -density: a BxN tensor with the pre-computed density at each particle.
+    Refer to the SPH link above for how to do this.
+
+The result of the forward call is a BxXxYxZxM tensor, where XYZ are the
+xyz shape passed to the constructor.
+"""
 class Particles2GridFunction(torch.autograd.Function):
 
     def __init__(self, grid_shape, grid_lower, grid_steps, radius):
@@ -38,6 +63,8 @@ class Particles2GridFunction(torch.autograd.Function):
             raise ValueError("density must be a 1 or 2-D tensor.")
         if len(data.size()) != 2 and len(data.size()) != 3:
             raise ValueError("data must be a 1, 2, or 3-D tensor.")
+        if locs.size()[-1] != 4:
+            raise ValueError("The last dimension of locs must be xyzw where w is the INVERSE mass of the particle.")
 
         gs = (s[0],) + tuple(self.grid_shape)
         if len(data.size()) > 2:

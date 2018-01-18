@@ -24,6 +24,8 @@ class Grid2ParticlesFunction(torch.autograd.Function):
         elif len(s) != 3:
             raise ValueError("Locs must be a 2 or 3-D tensor.")
 
+        if s[-1] != 4:
+            raise ValueError("The last dimension of locs must have size 4: xyzw, where w is a placeholder for the inverse mass.")
         if grid.size()[0] != s[0]:
             raise ValueError("locs and data must have the same batch size.")
 

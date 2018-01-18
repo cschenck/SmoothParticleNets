@@ -1,12 +1,12 @@
 
-import os
+import os 
 import subprocess as sp
 import sys
 from torch.utils.ffi import create_extension
 
 CUDA_SRCS = ['gpu_kernels.cu']
 HEADERS = ['spn.h']
-SRCS = ['fgrid.c', 'particles2grid.c', 'grid2particles.c']
+SRCS = ['fgrid.c', 'cuda_layer_funcs.c']
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
 lib_dir = os.path.join(root_dir, "lib")
@@ -19,7 +19,7 @@ if not os.path.exists(lib_dir):
 for cuda_src in CUDA_SRCS:
 	if sp.call(("nvcc -c -o %s %s -x cu -Xcompiler -fPIC -arch=sm_52" 
 		% (os.path.join(lib_dir, cuda_src + ".o"), os.path.join(src_dir, cuda_src))).split()):
-		sys.exit()
+		sys.exit(-1)
 
 cwd = os.getcwd()
 os.chdir(py_dir)
