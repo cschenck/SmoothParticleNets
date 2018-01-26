@@ -7,15 +7,14 @@ extern "C" {
 #include <math.h>
 #include <stdio.h>
 
+#define CUDA
+#include "common_funcs.h"
+#include "constants.h"
 #include "gpu_kernels.h"
 
 #define MAX_BLOCKS 65535
 
 
-typedef struct 
-{
-	int d[MAX_TENSOR_DIM];
-} TensorShape;
 
 
 /* UTIL FUNCTIONS */
@@ -119,17 +118,53 @@ float atomicMin(float *addr, float value)
     return old;
 }
 
-__device__
-float kernel_w(float3 x, float radius)
+/* Layer Funcs */
+
+__global__
+void kernel_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
+	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
+	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
+	float* dweight, int num_blocks)
 {
-	float d = sqrtf(x.x*x.x + x.y*x.y + x.z*x.z);
-	return 8.0f/powf(radius, 3)*(0.25f*powf(fmaxf(0.0f, radius - d), 3) - 
-		powf(fmaxf(0.0f, radius/2.0f - d), 3));
+	int block_size = ceilf(1.0f*N/num_blocks);
+
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < N*batch_size*num_blocks; i += stride)
+    {
+    	int b = i/(N*num_blocks);
+    	int n = (i % (N*num_blocks))/num_blocks;
+    	int block = i % num_blocks;
+    	int start = block*block_size;
+
+    	compute_kernel_cells(locs, data, density, weight, bias, batch_size, N, 
+    		nchannels, ndims, nkernels, ncells, radius, kernel_size, dilation, 
+    		out, b, n, start, start + block_size, ddata, dweight);
+    }
 }
+int cuda_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
+	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
+	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
+	float* dweight, cudaStream_t stream)
+{
+	const int NUM_BLOCKS = 4;
+	int nops = batch_size*N*NUM_BLOCKS;
+    int numBlocks = ceil(nops * (1.0/256));
+    dim3 blocks(numBlocks);
+    dim3 threads(256);
 
-
-
-
+	kernel_convsp<<<blocks, threads, 0, stream>>>(locs, data, density, weight, bias,
+		batch_size, N, nchannels, ndims, nkernels, ncells, radius, kernel_size, 
+		dilation, out, ddata, dweight, NUM_BLOCKS);
+	cudaDeviceSynchronize();
+	// check for errors
+	cudaError_t err = cudaGetLastError();
+	if (err != cudaSuccess) {
+	printf("error in cuda_convsp_forward: %s\n", cudaGetErrorString(err));
+		return 0;
+	}
+	return 1;
+}
 
 
 

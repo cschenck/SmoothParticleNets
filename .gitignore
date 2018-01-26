@@ -6,3 +6,4 @@ python/SmoothParticleNets/_ext/_ext.so
 python/SmoothParticleNets/_ext/__ext.so
 .cache/
 test/.cache/
+test/pytest_args.py

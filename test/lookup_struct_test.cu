@@ -23,6 +23,7 @@ void kernel_countneighbors_n2conv(float3* clocs, int batch_size, int N, float ra
     	float3 r = clocs[b*N + n];
     	int block_size = ceilf(1.0f*N/num_blocks);
     	int start = b*N + block*block_size;
+
     	for(int j = start; j < start + block_size && j < (b + 1)*N; ++j)
     	{
     		float3 r2 = clocs[j];
@@ -30,7 +31,7 @@ void kernel_countneighbors_n2conv(float3* clocs, int batch_size, int N, float ra
 					  (r.y - r2.y)*(r.y - r2.y) +
 					  (r.z - r2.z)*(r.z - r2.z);
 			if(d > (radius + dilation*SQRT3)*(radius + dilation*SQRT3))
-				continue;
+				continue;				
 			for(int ii = -1; ii <= 1; ++ii)
 			{
 				for(int jj = -1; jj <= 1; ++jj)
@@ -40,8 +41,11 @@ void kernel_countneighbors_n2conv(float3* clocs, int batch_size, int N, float ra
 						d = (r.x + ii*dilation - r2.x)*(r.x + ii*dilation - r2.x) +
 							(r.y + jj*dilation - r2.y)*(r.y + jj*dilation - r2.y) +
 							(r.z + kk*dilation - r2.z)*(r.z + kk*dilation - r2.z);
-						if(d < radius*radius)
-							atomicAdd(cncount + (b*N + n)*27 + (ii + 1)*9 + (jj + 1)*3 + (kk + 1), 1);
+						if(d < radius*radius) 
+							atomicAdd(cncount + (b*N + n)*27 + 
+												(ii + 1)*9 + 
+												(jj + 1)*3 + 
+												(kk + 1), 1);
 					}
 				}
 			}
@@ -196,7 +200,7 @@ int test_n2(void)
 
     // Run the kernel
 	kernel_countneighbors_n2conv<<<blocks, threads>>>(clocs, BATCH_SIZE, N, RADIUS, 
-		DILATION, NUM_BLOCKS, cncount);
+		DILATION, NUM_BLOCKS, cccount);
 	cudaDeviceSynchronize();
 
 	// Time it
@@ -214,15 +218,27 @@ int test_n2(void)
 	uint32_t* nccount = new uint32_t[BATCH_SIZE*N*27];
 	cudaMemcpy(nccount, cccount, sizeof(uint32_t)*BATCH_SIZE*N*27, cudaMemcpyDeviceToHost); 
 	sum = 0.0f;
+	int ii = 0;
+	bool first = false;
 	for(int b = 0; b < BATCH_SIZE; ++b)
 	{
 		for(uint32_t n = 0; n < N; ++n)
 		{
 			for(int i = 0; i < 27; ++i)
+			{
 				sum += nccount[b*N*27 + n*27 + i];
+				ii += 1;
+				if(nccount[b*N*27 + n*27 + i] == 0 && !first)
+				{
+					first = true;
+					printf("cccount=%lu, b=%d, n=%d, i=%d\n", (uint64_t)cccount, b, n, i);
+				}
+				else if(nccount[b*N*27 + n*27 + i] == N && first)
+					printf("Found 8000 after first 0\n");
+			}
 		}
 	}
-	printf("Average neighbor count: %lf\n", sum/(BATCH_SIZE*N*27));
+	printf("Average neighbor count: %lf\n", sum/ii);
 
 
 	return 0;

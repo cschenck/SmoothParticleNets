@@ -8,16 +8,29 @@ endif()
 
 #set(CMAKE_VERBOSE_MAKEFILE on)
 
+find_package(CUDA)
+
 set(layer_src
 	${PROJECT_SOURCE_DIR}/src/cuda_layer_funcs.c
-	${PROJECT_SOURCE_DIR}/src/fgrid.c
+	${PROJECT_SOURCE_DIR}/src/cpu_layer_funcs.c
 	${PROJECT_SOURCE_DIR}/src/gpu_kernels.cu
 	${PROJECT_SOURCE_DIR}/src/gpu_kernels.h
 	${PROJECT_SOURCE_DIR}/src/spn.h
+    ${PROJECT_SOURCE_DIR}/src/constants.h
+    ${PROJECT_SOURCE_DIR}/src/common_funcs.h
 )
 
+set(args 
+)
+if(CUDA_FOUND)
+    set(args
+    ${args}
+    --with_cuda
+)
+endif()
+
 add_custom_command(
-    COMMAND ${PYTHON_EXECUTABLE} build.py
+    COMMAND ${PYTHON_EXECUTABLE} build.py ${args}
     DEPENDS build.py ${layer_src}
     OUTPUT ${PROJECT_SOURCE_DIR}/python/SmoothParticleNets/_ext/__ext.so
     COMMENT "Generating PyTorch code."
