@@ -137,20 +137,20 @@ class TBLogger(object):
 
     def vecdiff_summary(self, tag, step, locs, vec1, vec2,
             axlimits=None, scale=1.0):
-            """Log a 3D vector difference plot, that is, plot two sets of vectors
-            for the same set of points alongside eachother so they may be easily
-            compared. The vectors in vec1 are plotted green, the vectors in vec2
-            are plotted blue, and the differences between the two are plotted in
-            red.
-            -tag: The string tag to associate with this log.
-            -step: The timestep for this log.
-            -locs: A Nx3 array of xyz locations to plot.
-            -vec1: A Nx3 array of xyz vectors.
-            -vec2: A Nx3 array of xyz vectors.
-            -axlimits: [Optional] If specified, should be a 3x2 array of
-                       the limits of the xyz axes.
-            -scale: [Optional] Scale the magnitude of every vector by this value.
-                    Useful when they are too small or large to be seen.
+        """Log a 3D vector difference plot, that is, plot two sets of vectors
+        for the same set of points alongside eachother so they may be easily
+        compared. The vectors in vec1 are plotted green, the vectors in vec2
+        are plotted blue, and the differences between the two are plotted in
+        red.
+        -tag: The string tag to associate with this log.
+        -step: The timestep for this log.
+        -locs: A Nx3 array of xyz locations to plot.
+        -vec1: A Nx3 array of xyz vectors.
+        -vec2: A Nx3 array of xyz vectors.
+        -axlimits: [Optional] If specified, should be a 3x2 array of
+                   the limits of the xyz axes.
+        -scale: [Optional] Scale the magnitude of every vector by this value.
+                Useful when they are too small or large to be seen.
         """
         self.fig.clf()
         self.fig.set_size_inches(14, 10, forward=True)
