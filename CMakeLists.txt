@@ -24,9 +24,16 @@ set(args
 )
 if(CUDA_FOUND)
     set(args
-    ${args}
-    --with_cuda
-)
+        ${args}
+        --with_cuda
+    )
+endif()
+
+if(CMAKE_BUILD_TYPE EQUAL "DEBUG")
+    set(args
+        ${args}
+        --debug
+    )
 endif()
 
 add_custom_command(

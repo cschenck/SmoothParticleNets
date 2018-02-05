@@ -1,4 +1,4 @@
-    import os
+import os
 import sys
 # Add path to python source to path.
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "python"))
@@ -92,8 +92,8 @@ def eval_convsp(cuda=False):
     locs = torch.autograd.Variable(use_cuda(torch.FloatTensor(locs)), requires_grad=False)
     data = torch.autograd.Variable(use_cuda(torch.FloatTensor(data)), requires_grad=True)
     density = torch.autograd.Variable(use_cuda(torch.FloatTensor(density)), requires_grad=False)
-    weights = torch.nn.Parameter(use_cuda(torch.FloatTensor(weights)), requires_grad=True)
-    biases = torch.nn.Parameter(use_cuda(torch.FloatTensor(biases)), requires_grad=True)
+    weights = torch.nn.Parameter(torch.FloatTensor(weights), requires_grad=True)
+    biases = torch.nn.Parameter(torch.FloatTensor(biases), requires_grad=True)
 
     convsp = spn.ConvSP(NCHANNELS, NKERNELS, NDIM, KERNEL_SIZE, DILATION, RADIUS)
     convsp.weight = weights

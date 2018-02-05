@@ -6,6 +6,7 @@ import torch
 import torch.autograd
 
 import _ext
+import error_checking as ec
 
 
 class ConvSP(torch.nn.Module):
@@ -31,29 +32,29 @@ class ConvSP(torch.nn.Module):
             -radius: The radius to use when computing the neighbors for each query point.
         """
         super(ConvSP, self).__init__()
-        self.nchannels = _check_conditions(in_channels, "in_channels", 
+        self.nchannels = ec.check_conditions(in_channels, "in_channels", 
             "%s > 0", "isinstance(%s, numbers.Integral)")
-        self.nkernels = _check_conditions(out_channels, "out_channels",
+        self.nkernels = ec.check_conditions(out_channels, "out_channels",
             "%s > 0", "isinstance(%s, numbers.Integral)")
-        self.ndim = _check_conditions(ndim, "ndim", 
+        self.ndim = ec.check_conditions(ndim, "ndim", 
             "%s > 0", "%s < " + str(_ext.spn_max_cartesian_dim()), 
             "isinstance(%s, numbers.Integral)")
 
-        self.kernel_size = _make_list(kernel_size, ndim, "kernel_size", 
+        self._kernel_size = ec.make_list(kernel_size, ndim, "kernel_size", 
             "%s >= 0", "%s %% 2 == 1 # Must be odd", 
             "isinstance(%s, numbers.Integral)")
-        self.dilation = _make_list(dilation, ndim, "dilation", 
+        self._dilation = ec.make_list(dilation, ndim, "dilation", 
             "%s >= 0", "isinstance(%s, numbers.Real)")
 
-        self.radius = _check_conditions(radius, "radius", 
+        self.radius = ec.check_conditions(radius, "radius", 
             "%s >= 0", "isinstance(%s, numbers.Real)")
 
-        self.ncells = np.prod(self.kernel_size)
-        self.weight = torch.nn.Parameter(torch.Tensor(self.nkernels, self.nchannels, self.ncells))
-        self.bias = torch.nn.Parameter(torch.Tensor(self.nkernels))
+        self.ncells = np.prod(self._kernel_size)
+        self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(self.nkernels, self.nchannels, self.ncells)))
+        self.register_parameter("bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
 
-        self.kernel_size = _list2tensor(self.kernel_size)
-        self.dilation = _list2tensor(self.dilation)
+        self.register_buffer("kernel_size", ec.list2tensor(self._kernel_size))
+        self.register_buffer("dilation", ec.list2tensor(self._dilation))
 
     def forward(self, locs, data, density):
         """ Compute a forward pass of the Smooth Particle Convolution Layer.
@@ -77,9 +78,9 @@ class ConvSP(torch.nn.Module):
         # Error checking.
         batch_size = locs.size()[0]
         N = locs.size()[1]
-        _check_tensor_dims(locs, "locs", (batch_size, N, self.ndim + 1))
-        _check_tensor_dims(data, "data", (batch_size, self.nchannels, N))
-        _check_tensor_dims(density, "density", (batch_size, N))
+        ec.check_tensor_dims(locs, "locs", (batch_size, N, self.ndim + 1))
+        ec.check_tensor_dims(data, "data", (batch_size, self.nchannels, N))
+        ec.check_tensor_dims(density, "density", (batch_size, N))
 
         # Do the compution.
         convsp = _ConvSPFunction(self.radius, self.kernel_size, self.dilation,
@@ -115,7 +116,7 @@ class _ConvSPFunction(torch.autograd.Function):
         ret.fill_(0)
         if locs.is_cuda:
             if not _ext.spnc_convsp_forward(locs, data, density, weight, bias, self.radius, 
-                        self.kernel_size.cuda(), self.dilation.cuda(), ret):
+                        self.kernel_size, self.dilation, ret):
                 raise Exception("Cuda error")
         else:
             _ext.spn_convsp_forward(locs, data, density, weight, bias, self.radius, 
@@ -135,7 +136,7 @@ class _ConvSPFunction(torch.autograd.Function):
         ret_weight.fill_(0)
         if grad_output.is_cuda:
             if not _ext.spnc_convsp_backward(locs, data, density, weight, bias, self.radius, 
-                        self.kernel_size.cuda(), self.dilation.cuda(), grad_output, ret_data,
+                        self.kernel_size, self.dilation, grad_output, ret_data,
                         ret_weight):
                 raise Exception("Cuda error")
         else:
@@ -153,37 +154,3 @@ class _ConvSPFunction(torch.autograd.Function):
 
 
 
-def _throws_exception(exception_type, func, *args, **kwargs):
-    try:
-        func(*args, **kwargs)
-        return False
-    except exception_type:
-        return True
-
-def _check_conditions(v, name, *conditions):
-    for condition in conditions:
-        if not eval(condition % "v"):
-            raise ValueError(("%s must meet the following condition: " + condition) % (name, name))
-    return v
-
-def _make_list(l, length, name, *conditions):
-    if _throws_exception(TypeError, list, l):
-        l = [l]*length
-    else:
-        l = list(l)
-    if len(l) != length:
-        raise ValueError("%s must be a list of length %d." % (name, length))
-    for i, ll in enumerate(l):
-        l[i] = _check_conditions(ll, name, *conditions)
-    return l
-
-def _check_tensor_dims(t, name, dims):
-    s = t.size()
-    if len(s) != len(dims):
-        raise ValueError("%s must be a %d-dimensional tensor." % (name, len(dims)))
-    for i in range(len(dims)):
-        if s[i] != dims[i]:
-            raise ValueError("The %dth dimension of %s must have size %d, not %d." % (i, name, dims[i], s[i]))
-
-def _list2tensor(l):
-    return torch.from_numpy(np.array(l, dtype=np.float32))

@@ -5,6 +5,7 @@ extern "C" {
 
 #include <float.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #define CUDA
@@ -29,26 +30,7 @@ float4 normalize_quaternion(float4 q)
     return q;
 }
 
-__device__ __host__
-float4 quaternion_conjugate(float4 quat)
-{
-    float4 ret = quat;
-    ret.x *= -1.0;
-    ret.y *= -1.0;
-    ret.z *= -1.0;
-    return ret;
-}
 
-__device__ __host__
-float4 quaternion_mult(float4 q1, float4 q2)
-{
-    float4 ret;
-    ret.w = q1.w*q2.w - q1.x*q2.x - q1.y*q2.y - q1.z*q2.z;
-    ret.x = q1.w*q2.x + q1.x*q2.w + q1.y*q2.z - q1.z*q2.y;
-    ret.y = q1.w*q2.y + q1.y*q2.w + q1.z*q2.x - q1.x*q2.z;
-    ret.z = q1.w*q2.z + q1.z*q2.w + q1.x*q2.y - q1.y*q2.x;
-    return ret;
-}
 
 __device__ __host__
 float trilinear_interp(float* grid, float3 grid_lower, int3 grid_dims, 
@@ -160,12 +142,86 @@ int cuda_convsp(float* locs, float* data, float* density, float* weight, float* 
 	// check for errors
 	cudaError_t err = cudaGetLastError();
 	if (err != cudaSuccess) {
-	printf("error in cuda_convsp_forward: %s\n", cudaGetErrorString(err));
+	printf("error in cuda_convsp: %s\n", cudaGetErrorString(err));
 		return 0;
 	}
 	return 1;
 }
 
+
+__global__
+void kernel_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
+    float* poses, float* scales, int M, int pose_len, float* sdfs, float* sdf_offsets, 
+    float* sdf_shapes, float* weight, float* bias, int nkernels, int ncells, 
+    float* kernel_size, float* dilation, float max_distance, float* out, float* dweight)
+{
+    int _isdf_cache[64];
+    float _fsdf_cache[64];
+    int* isdf_cache;
+    float* fsdf_cache;
+    if(M < 64)
+    {
+        isdf_cache = _isdf_cache;
+        fsdf_cache = _fsdf_cache;
+    }
+    else
+    {
+        isdf_cache = (int*)malloc(sizeof(int)*M);
+        fsdf_cache = (float*)malloc(sizeof(float)*M);
+    }
+
+
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < N*batch_size*nkernels; i += stride)
+    {
+        int b = i/(N*nkernels);
+        int n = (i % (N*nkernels))/nkernels;
+        int outk = i % nkernels;
+
+        compute_sdf_kernel_cells(locs, batch_size, N, ndims, idxs, poses, 
+                    scales, M, pose_len, sdfs, sdf_offsets, sdf_shapes, weight, bias, 
+                    nkernels, ncells, kernel_size, dilation, max_distance, out, b, n,
+                    outk, dweight, isdf_cache, fsdf_cache);
+    }
+
+    if(M >= 64)
+    {
+        free(isdf_cache);
+        free(fsdf_cache);
+    }
+}
+int cuda_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
+    float* poses, float* scales, int M, int pose_len, float* sdfs, float* sdf_offsets, 
+    float* sdf_shapes, float* weight, float* bias, int nkernels, int ncells, 
+    float* kernel_size, float* dilation, float max_distance, float* out, float* dweight, 
+    cudaStream_t stream)
+{
+    int nops = batch_size*N*nkernels;
+    int numBlocks = ceil(nops * (1.0/256));
+    dim3 blocks(numBlocks);
+    dim3 threads(256); 
+
+    // Stack overflow happens with the default stack size (1024).
+    cudaError_t err = cudaDeviceSetLimit(cudaLimitStackSize, 4096);
+    if (err != cudaSuccess) {
+	    printf("error trying to set the stack size limit to 4096: %s\n", 
+	    			cudaGetErrorString(err));
+	        return 0;
+    }
+
+    kernel_convsdf<<<blocks, threads, 0, stream>>>(locs, batch_size, N, ndims, idxs, poses,
+        scales, M, pose_len, sdfs, sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, kernel_size, dilation,
+        max_distance, out, dweight);
+    cudaDeviceSynchronize();
+    // check for errors
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+	    printf("error in cuda_convsdf: %s\n", cudaGetErrorString(err));
+	        return 0;
+    }
+    return 1;
+}
 
 
 #ifdef __cplusplus
