@@ -441,7 +441,7 @@ void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, flo
 	{
 		for(i = 0; i < ndims; ++i)
 			pt[i] = r[i] + (kidxs[i] - ((int)kernel_size[i]/2))*dilation[i];
-		float smallest = max_distance;
+		float smallest = biggest_minVal;
 		for(m = 0; m < M; ++m)
 		{
 			if(!isdf_cache[m])
