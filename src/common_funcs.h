@@ -321,18 +321,21 @@ stores them in out at that location's and kernel's index. The inputs are:
 	-batch_size: the size of the batch.
 	-N: the number of particles in each batch.
 	-ndims: the cardinality of the cartesian coordinate space.
-	-idxs: (M) the indices in the global SDF list of each of the SDFs convolved on here.
-	-poses: (M X pose_len) the pose of each of the M SDFs. Each row is one pose, where
-			the first ndims values are the translation and the remaining values are the
-			rotation. The form of the rotation will vary depending on ndims. Currently
-			the following is supported:
+	-idxs: (batch_size x M) the indices in the global SDF list of each of the SDFs
+			convolved on here. M is the maximum number of SDFs that may be in a scene,
+			but there can be fewer. When there are fewer, set the indices in this array
+			that are not needed to -1, and they will be ignored.
+	-poses: (batch_size x M X pose_len) the pose of each of the M SDFs. Each row is one 
+			pose, where the first ndims values are the translation and the remaining 
+			values are the rotation. The form of the rotation will vary depending on ndims.
+			Currently the following is supported:
 				-1D: empty (no rotation)
 				-2D: a single value in radians where 0 is pointing directly along the
 					 +x axis and pi/2 is pointing directly along +y.
 				-3D: a normalized quaternion of the format xyzw.
 			No other dimensionalities for rotations are supported. The origin is 
 			assumed to be the lower corner of the SDF grid.
-	-scales: (M) The scale of each SDF in idxs.
+	-scales: (batch_size x M) The scale of each SDF in idxs.
 	-M: the number of SDFs.
 	-pose_len: the length of each row in poses.
 	-sdfs: (long array of bytes) the master list of all sdfs into which idxs indexes.
@@ -396,6 +399,11 @@ void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, flo
 	for(m = 0; m < M; ++m)
 	{
 		int mm = (int)idxs[b*M + m];
+		if(mm < 0)
+		{
+			isdf_cache[m] = 0;
+			continue;
+		}
 		float cell_size = sdf_shapes[mm*(ndims + 1) + ndims]*scales[b*M + m];
 		point_in_coordinate_frame(r, ndims, poses + b*M*pose_len + m*pose_len, 
 			poses + b*M*pose_len + m*pose_len + ndims, r2);
