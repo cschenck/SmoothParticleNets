@@ -105,6 +105,7 @@ def eval_convsdf(cuda=False):
     sdf_poses[..., 3:] /= np.sqrt((sdf_poses[..., 3:]**2).sum(axis=-1))[..., np.newaxis]
 
     idxs = np.random.randint(0, 3, size=(BATCH_SIZE, M))
+    idxs[-1, -1] = -1
     scales = np.random.rand(BATCH_SIZE, M)*0.5 + 0.5
 
     sdf_fns = [RegularGridInterpolator(
@@ -112,6 +113,7 @@ def eval_convsdf(cuda=False):
                         for y, s in zip(sdfs[i].shape, sdf_widths[i, ...])], sdfs[i], 
                     bounds_error=False, fill_value=np.finfo(np.float32).max) 
                 for i in range(len(sdfs))]
+
     for outk in range(NKERNELS):
         allkidx = itertools.product(
             *[list(range(-(k//2), k//2 + 1)) for k in KERNEL_SIZE[::-1]])
@@ -122,6 +124,8 @@ def eval_convsdf(cuda=False):
                     minv = MAX_DISTANCE
                     for m in range(M):
                         mm = idxs[b, m]
+                        if mm < 0:
+                            continue
                         r2 = quaternionMult(quaternionConjugate(sdf_poses[b, m, 3:]), 
                                             quaternionMult(r - sdf_poses[b, m, :3], 
                                                            sdf_poses[b, m, 3:]))[:3]
@@ -130,7 +134,6 @@ def eval_convsdf(cuda=False):
                         minv = min(v, minv)
                     ground_truth[b, outk, i] += weights[outk, k]*minv
     ground_truth += biases[np.newaxis, :, np.newaxis]
-
 
     def use_cuda(x):
         if cuda:

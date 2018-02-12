@@ -425,8 +425,10 @@ void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, flo
 		float v = nlinear_interp(sdfs + (int)sdf_offsets[mm], sdf_shapes + mm*(ndims + 1), 
 			ndims, cell_size, r2)*scales[b*M + m];
 		fsdf_cache[m] = v;
-		if(v + nr < biggest_minVal)
-			biggest_minVal = v + nr;
+		// TODO: This is causing issues with the tests. For now we won't use 
+		// biggest_minVal to weed out SDFs.
+		// if(v + nr < biggest_minVal)
+		// 	biggest_minVal = v + nr;
 	}
 	for(m = 0; m < M; ++m)
 	{
@@ -449,7 +451,7 @@ void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, flo
 	{
 		for(i = 0; i < ndims; ++i)
 			pt[i] = r[i] + (kidxs[i] - ((int)kernel_size[i]/2))*dilation[i];
-		float smallest = biggest_minVal;
+		float smallest = max_distance;
 		for(m = 0; m < M; ++m)
 		{
 			if(!isdf_cache[m])
