@@ -219,8 +219,10 @@ given particle. Inputs are:
 			 NULL (backward computation).
 **/
 DEVICE_FUNC
-void compute_kernel_cells(float* locs, float* data, float* density, float* weight, 
-	float* bias, int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells,
+void compute_kernel_cells(float* locs, float* data, float* density, float* neighborlist, 
+	float* weight, 
+	float* bias, int batch_size, int N, int nchannels, int ndims, int nneighbors, 
+	int nkernels, int ncells,
 	float radius, float* kernel_size, float* dilation, float* out, int b, int n, int start, 
 	int end, float* ddata, float* dweight)
 {
@@ -229,9 +231,15 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 	int backward = ((ddata != NULL) || (dweight != NULL));
 	float* out_ptr = out + b*nkernels*N + n;
 
-	int j;
-	for(j = start; j < end && j < N; ++j)
+	int jj, j, jjj;
+	// Add outer for loop to artificially add more computation.
+	for(jjj = 0; jjj < 8; ++jjj)
 	{
+	// Assume neighbor list is ordered.
+	for(jj = 0; jj < nneighbors; ++jj)
+	{
+		j = neighborlist[jj];
+		if(j < 0) continue;
 		float* r2 = locs + (b*N + j)*(ndims + 1);
 		float d = dissqr(r, r2, ndims);
 		float dd = fastroot(ndims);
@@ -241,7 +249,6 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 		if(d > nr*nr)
 			continue;
 
-		
 		int k;
 		for(k = 0; k < ndims; ++k)
 			idxs[k] = 0;
@@ -308,6 +315,7 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 				++idxs[k+1];
 			}
 		}
+	}
 	}
 }
 

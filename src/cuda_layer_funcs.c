@@ -14,13 +14,14 @@ extern THCState *state;
 
 
 int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t, 
-    THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
+    THCudaTensor* neighborlist_t, THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, THCudaTensor* out_t)
 {
 
     float* locs = THCudaTensor_data(state, locs_t);
     float* data = THCudaTensor_data(state, data_t);
     float* density = THCudaTensor_data(state, density_t);
+    float* neighborlist = THCudaTensor_data(state, neighborlist_t);
     float* weight = THCudaTensor_data(state, weight_t);
     float* bias = THCudaTensor_data(state, bias_t);
     int batch_size = locs_t->size[0];
@@ -29,24 +30,27 @@ int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor
     int ndims = locs_t->size[2] - 1;
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
+    int nneighbors = neighborlist_t->size[2];
     float* kernel_size = THCudaTensor_data(state, kernel_size_t);
     float* dilation = THCudaTensor_data(state, dilation_t);
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_convsp(locs, data, density, weight, bias, batch_size, N, nchannels, ndims,
+    return cuda_convsp(locs, data, density, neighborlist, weight, bias, batch_size, N, 
+        nchannels, ndims, nneighbors,
         nkernels, ncells, radius, kernel_size, dilation, out, NULL, NULL, stream);
 
 }
 
 int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t, 
-    THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
+    THCudaTensor* neighborlist_t, THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, THCudaTensor* out_t,
     THCudaTensor* ddata_t, THCudaTensor* dweight_t)
 {
     float* locs = THCudaTensor_data(state, locs_t);
     float* data = THCudaTensor_data(state, data_t);
     float* density = THCudaTensor_data(state, density_t);
+    float* neighborlist = THCudaTensor_data(state, neighborlist_t);
     float* weight = THCudaTensor_data(state, weight_t);
     float* bias = THCudaTensor_data(state, bias_t);
     float* ddata = THCudaTensor_data(state, ddata_t);
@@ -57,12 +61,14 @@ int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTenso
     int ndims = locs_t->size[2] - 1;
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
+    int nneighbors = neighborlist_t->size[2];
     float* kernel_size = THCudaTensor_data(state, kernel_size_t);
     float* dilation = THCudaTensor_data(state, dilation_t);
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_convsp(locs, data, density, weight, bias, batch_size, N, nchannels, ndims,
+    return cuda_convsp(locs, data, density, neighborlist, weight, bias, batch_size, N, 
+        nchannels, ndims, nneighbors,
         nkernels, ncells, radius, kernel_size, dilation, out, ddata, dweight, stream);
 }
 

@@ -56,7 +56,7 @@ class ConvSP(torch.nn.Module):
         self.register_buffer("kernel_size", ec.list2tensor(self._kernel_size))
         self.register_buffer("dilation", ec.list2tensor(self._dilation))
 
-    def forward(self, locs, data, density):
+    def forward(self, locs, data, density, neighborlist):
         """ Compute a forward pass of the Smooth Particle Convolution Layer.
 
         Inputs:
@@ -86,7 +86,7 @@ class ConvSP(torch.nn.Module):
         convsp = _ConvSPFunction(self.radius, self.kernel_size, self.dilation,
             self.ncells)
         # data.shape = BxCxN
-        data = convsp(locs, data, density, self.weight, self.bias)
+        data = convsp(locs, data, density, neighborlist, self.weight, self.bias)
         # data.shape = BxOxN
         return data
 
@@ -107,19 +107,21 @@ class _ConvSPFunction(torch.autograd.Function):
         self.dilation = dilation
         self.ncells = ncells
 
-    def forward(self, locs, data, density, weight, bias):
-        self.save_for_backward(locs, data, density, weight, bias)
+    def forward(self, locs, data, density, neighborlist, weight, bias):
+        self.save_for_backward(locs, data, density, neighborlist, weight, bias)
         batch_size = locs.size()[0]
         N = locs.size()[1]
         nkernels = weight.size()[0]
         ret = data.new(batch_size, nkernels, N)
         ret.fill_(0)
         if locs.is_cuda:
-            if not _ext.spnc_convsp_forward(locs, data, density, weight, bias, self.radius, 
+            if not _ext.spnc_convsp_forward(locs, data, density, neighborlist, 
+                        weight, bias, self.radius, 
                         self.kernel_size, self.dilation, ret):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_forward(locs, data, density, weight, bias, self.radius, 
+            _ext.spn_convsp_forward(locs, data, density, neighborlist, 
+                weight, bias, self.radius, 
                 self.kernel_size, self.dilation, ret)
 
         # Add the bias.
@@ -129,7 +131,7 @@ class _ConvSPFunction(torch.autograd.Function):
 
 
     def backward(self, grad_output):
-        locs, data, density, weight, bias = self.saved_tensors
+        locs, data, density, neighborlist, weight, bias = self.saved_tensors
         ret_data = grad_output.new(data.size())
         ret_data.fill_(0)
         ret_weight = grad_output.new(weight.size())
@@ -140,7 +142,8 @@ class _ConvSPFunction(torch.autograd.Function):
                         ret_weight):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_backward(locs, data, density, weight, bias, self.radius, 
+            _ext.spn_convsp_backward(locs, data, density, neighborlist, weight, bias, 
+                self.radius, 
                 self.kernel_size, self.dilation, grad_output, ret_data, ret_weight)
 
         # PyTorch requires gradients for each input, but we only care about the
@@ -148,6 +151,7 @@ class _ConvSPFunction(torch.autograd.Function):
         return (grad_output.new(locs.size()).fill_(0), 
                 ret_data, 
                 grad_output.new(density.size()).fill_(0),
+                grad_output.new(neighborlist.size()).fill_(0),
                 ret_weight,
                 grad_output.sum(2).sum(0))
 

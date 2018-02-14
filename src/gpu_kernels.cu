@@ -103,8 +103,9 @@ float atomicMin(float *addr, float value)
 /* Layer Funcs */
 
 __global__
-void kernel_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
-	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
+void kernel_convsp(float* locs, float* data, float* density, float* neighborlist, 
+	float* weight, float* bias, 
+	int batch_size, int N, int nchannels, int ndims, int nneighbors, int nkernels, int ncells, 
 	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
 	float* dweight, int num_blocks)
 {
@@ -119,24 +120,26 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
     	int block = i % num_blocks;
     	int start = block*block_size;
 
-    	compute_kernel_cells(locs, data, density, weight, bias, batch_size, N, 
-    		nchannels, ndims, nkernels, ncells, radius, kernel_size, dilation, 
+    	compute_kernel_cells(locs, data, density, neighborlist, weight, bias, batch_size, N, 
+    		nchannels, ndims, nneighbors, nkernels, ncells, radius, kernel_size, dilation, 
     		out, b, n, start, start + block_size, ddata, dweight);
     }
 }
-int cuda_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
-	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
+int cuda_convsp(float* locs, float* data, float* density, float* neighborlist, 
+	float* weight, float* bias, 
+	int batch_size, int N, int nchannels, int ndims, int nneighbors, int nkernels, int ncells, 
 	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
 	float* dweight, cudaStream_t stream)
 {
-	const int NUM_BLOCKS = 4;
+	const int NUM_BLOCKS = 1;
 	int nops = batch_size*N*NUM_BLOCKS;
     int numBlocks = ceil(nops * (1.0/256));
     dim3 blocks(numBlocks);
     dim3 threads(256);
 
-	kernel_convsp<<<blocks, threads, 0, stream>>>(locs, data, density, weight, bias,
-		batch_size, N, nchannels, ndims, nkernels, ncells, radius, kernel_size, 
+	kernel_convsp<<<blocks, threads, 0, stream>>>(locs, data, density, neighborlist, 
+		weight, bias,
+		batch_size, N, nchannels, ndims, nneighbors, nkernels, ncells, radius, kernel_size, 
 		dilation, out, ddata, dweight, NUM_BLOCKS);
 	cudaDeviceSynchronize();
 	// check for errors
