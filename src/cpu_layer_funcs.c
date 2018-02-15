@@ -3,11 +3,17 @@
 #ifdef CUDA
 #undef CUDA
 #endif
+
+#include <math.h>
+
 #include "common_funcs.h"
 #include "constants.h"
 
-int cpu_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
+int cpu_convsp(float* locs, float* data, float* density, 
+    float* cellIdxs, float* originalIndex, float* cellStart, float* cellEnd, 
+    float* gridShape, float* weight, float* bias, 
     int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
+    int cell_stride,
     float radius, float* kernel_size, float* dilation, float* out, float* ddata, 
     float* dweight);
 
@@ -23,6 +29,8 @@ int spn_max_cartesian_dim(void)
 }
 
 int spn_convsp_forward(THFloatTensor* locs_t, THFloatTensor* data_t, THFloatTensor* density_t, 
+    THFloatTensor* cellIdxs_t, THFloatTensor* originalIndex_t, THFloatTensor* cellStart_t,
+    THFloatTensor* cellEnd_t, THFloatTensor* gridShape_t,
     THFloatTensor* weight_t, THFloatTensor* bias_t,float radius, THFloatTensor* kernel_size_t, 
     THFloatTensor* dilation_t, THFloatTensor* out_t)
 {
@@ -30,6 +38,11 @@ int spn_convsp_forward(THFloatTensor* locs_t, THFloatTensor* data_t, THFloatTens
     float* locs = THFloatTensor_data(locs_t);
     float* data = THFloatTensor_data(data_t);
     float* density = THFloatTensor_data(density_t);
+    float* cellIdxs = THFloatTensor_data(cellIdxs_t);
+    float* originalIndex = THFloatTensor_data(originalIndex_t);
+    float* cellStart = THFloatTensor_data(cellStart_t);
+    float* cellEnd = THFloatTensor_data(cellEnd_t);
+    float* gridShape = THFloatTensor_data(gridShape_t);
     float* weight = THFloatTensor_data(weight_t);
     float* bias = THFloatTensor_data(bias_t); 
     int batch_size = locs_t->size[0];
@@ -38,15 +51,19 @@ int spn_convsp_forward(THFloatTensor* locs_t, THFloatTensor* data_t, THFloatTens
     int ndims = locs_t->size[2] - 1;
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
+    int cell_stride = cellStart_t->size[1];
     float* kernel_size = THFloatTensor_data(kernel_size_t);
     float* dilation = THFloatTensor_data(dilation_t);
     float* out = THFloatTensor_data(out_t);
 
-    return cpu_convsp(locs, data, density, weight, bias, batch_size, N, nchannels, ndims,
-        nkernels, ncells, radius, kernel_size, dilation, out, NULL, NULL);
+    return cpu_convsp(locs, data, density, cellIdxs, originalIndex, cellStart, cellEnd,
+        gridShape, weight, bias, batch_size, N, nchannels, ndims,
+        nkernels, ncells, cell_stride, radius, kernel_size, dilation, out, NULL, NULL);
 }
 
 int spn_convsp_backward(THFloatTensor* locs_t, THFloatTensor* data_t, THFloatTensor* density_t, 
+    THFloatTensor* cellIdxs_t, THFloatTensor* originalIndex_t, THFloatTensor* cellStart_t,
+    THFloatTensor* cellEnd_t, THFloatTensor* gridShape_t,
     THFloatTensor* weight_t, THFloatTensor* bias_t,float radius, THFloatTensor* kernel_size_t, 
     THFloatTensor* dilation_t, THFloatTensor* out_t, THFloatTensor* ddata_t,
     THFloatTensor* dweight_t)
@@ -55,6 +72,11 @@ int spn_convsp_backward(THFloatTensor* locs_t, THFloatTensor* data_t, THFloatTen
     float* locs = THFloatTensor_data(locs_t);
     float* data = THFloatTensor_data(data_t);
     float* density = THFloatTensor_data(density_t);
+    float* cellIdxs = THFloatTensor_data(cellIdxs_t);
+    float* originalIndex = THFloatTensor_data(originalIndex_t);
+    float* cellStart = THFloatTensor_data(cellStart_t);
+    float* cellEnd = THFloatTensor_data(cellEnd_t);
+    float* gridShape = THFloatTensor_data(gridShape_t);
     float* weight = THFloatTensor_data(weight_t);
     float* bias = THFloatTensor_data(bias_t); 
     float* ddata = THFloatTensor_data(ddata_t);
@@ -65,16 +87,21 @@ int spn_convsp_backward(THFloatTensor* locs_t, THFloatTensor* data_t, THFloatTen
     int ndims = locs_t->size[2] - 1;
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
+    int cell_stride = cellStart_t->size[1];
     float* kernel_size = THFloatTensor_data(kernel_size_t);
     float* dilation = THFloatTensor_data(dilation_t);
     float* out = THFloatTensor_data(out_t);
 
-    return cpu_convsp(locs, data, density, weight, bias, batch_size, N, nchannels, ndims,
-        nkernels, ncells, radius, kernel_size, dilation, out, ddata, dweight);
+    return cpu_convsp(locs, data, density, cellIdxs, originalIndex, cellStart, cellEnd,
+        gridShape, weight, bias, batch_size, N, nchannels, ndims,
+        nkernels, ncells, cell_stride, radius, kernel_size, dilation, out, ddata, dweight);
 }
 
-int cpu_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
-    int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
+int cpu_convsp(float* locs, float* data, float* density, 
+    float* cellIdxs, float* originalIndex, float* cellStart, float* cellEnd, 
+    float* gridShape, float* weight, float* bias, 
+    int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells,
+    int cell_stride, 
     float radius, float* kernel_size, float* dilation, float* out, float* ddata, 
     float* dweight)
 {
@@ -83,9 +110,12 @@ int cpu_convsp(float* locs, float* data, float* density, float* weight, float* b
     {
         for(n = 0; n < N; ++n)
         {
-            compute_kernel_cells(locs, data, density, weight, bias, batch_size, N, 
-                nchannels, ndims, nkernels, ncells, radius, kernel_size, dilation, 
-                out, b, n, 0, N, ddata, dweight);
+            compute_kernel_cells(locs, data, density, 
+                cellIdxs, originalIndex, cellStart, cellEnd, gridShape,
+                weight, bias, batch_size, N, 
+                nchannels, ndims, nkernels, ncells, cell_stride, 
+                radius, kernel_size, dilation, 
+                out, b, n, 0, (int)pow(3, ndims), ddata, dweight);
         }
     }
     return 1;

@@ -13,7 +13,9 @@ extern THCState *state;
 
 
 
-int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t, 
+int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t,
+    THCudaTensor* cellIdxs_t, THCudaTensor* originalIndex_t, THCudaTensor* cellStart_t,
+    THCudaTensor* cellEnd_t, THCudaTensor* gridShape_t,
     THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, THCudaTensor* out_t)
 {
@@ -21,6 +23,11 @@ int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor
     float* locs = THCudaTensor_data(state, locs_t);
     float* data = THCudaTensor_data(state, data_t);
     float* density = THCudaTensor_data(state, density_t);
+    float* cellIdxs = THCudaTensor_data(state, cellIdxs_t);
+    float* originalIndex = THCudaTensor_data(state, originalIndex_t);
+    float* cellStart = THCudaTensor_data(state, cellStart_t);
+    float* cellEnd = THCudaTensor_data(state, cellEnd_t);
+    float* gridShape = THCudaTensor_data(state, gridShape_t);
     float* weight = THCudaTensor_data(state, weight_t);
     float* bias = THCudaTensor_data(state, bias_t);
     int batch_size = locs_t->size[0];
@@ -29,17 +36,21 @@ int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor
     int ndims = locs_t->size[2] - 1;
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
+    int cell_stride = cellStart_t->size[1];
     float* kernel_size = THCudaTensor_data(state, kernel_size_t);
     float* dilation = THCudaTensor_data(state, dilation_t);
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_convsp(locs, data, density, weight, bias, batch_size, N, nchannels, ndims,
-        nkernels, ncells, radius, kernel_size, dilation, out, NULL, NULL, stream);
+    return cuda_convsp(locs, data, density, cellIdxs, originalIndex, cellStart, cellEnd,
+        gridShape, weight, bias, batch_size, N, nchannels, ndims,
+        nkernels, ncells, cell_stride, radius, kernel_size, dilation, out, NULL, NULL, stream);
 
 }
 
-int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t, 
+int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t,
+    THCudaTensor* cellIdxs_t, THCudaTensor* originalIndex_t, THCudaTensor* cellStart_t,
+    THCudaTensor* cellEnd_t, THCudaTensor* gridShape_t, 
     THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, THCudaTensor* out_t,
     THCudaTensor* ddata_t, THCudaTensor* dweight_t)
@@ -47,6 +58,11 @@ int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTenso
     float* locs = THCudaTensor_data(state, locs_t);
     float* data = THCudaTensor_data(state, data_t);
     float* density = THCudaTensor_data(state, density_t);
+    float* cellIdxs = THCudaTensor_data(state, cellIdxs_t);
+    float* originalIndex = THCudaTensor_data(state, originalIndex_t);
+    float* cellStart = THCudaTensor_data(state, cellStart_t);
+    float* cellEnd = THCudaTensor_data(state, cellEnd_t);
+    float* gridShape = THCudaTensor_data(state, gridShape_t);
     float* weight = THCudaTensor_data(state, weight_t);
     float* bias = THCudaTensor_data(state, bias_t);
     float* ddata = THCudaTensor_data(state, ddata_t);
@@ -57,13 +73,16 @@ int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTenso
     int ndims = locs_t->size[2] - 1;
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
+    int cell_stride = cellStart_t->size[1];
     float* kernel_size = THCudaTensor_data(state, kernel_size_t);
     float* dilation = THCudaTensor_data(state, dilation_t);
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_convsp(locs, data, density, weight, bias, batch_size, N, nchannels, ndims,
-        nkernels, ncells, radius, kernel_size, dilation, out, ddata, dweight, stream);
+    return cuda_convsp(locs, data, density, cellIdxs, originalIndex, cellStart, cellEnd,
+        gridShape, weight, bias, batch_size, N, nchannels, ndims,
+        nkernels, ncells, cell_stride, 
+        radius, kernel_size, dilation, out, ddata, dweight, stream);
 }
 
 int spnc_convsdf_forward(THCudaTensor* locs_t, THCudaTensor* idxs_t, THCudaTensor* poses_t, 

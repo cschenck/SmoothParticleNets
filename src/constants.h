@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-#define MAX_CARTESIAN_DIM 20
+#define MAX_CARTESIAN_DIM 3
 
 #ifdef __cplusplus
 }

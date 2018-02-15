@@ -37,7 +37,7 @@ class ConvSP(torch.nn.Module):
         self.nkernels = ec.check_conditions(out_channels, "out_channels",
             "%s > 0", "isinstance(%s, numbers.Integral)")
         self.ndim = ec.check_conditions(ndim, "ndim", 
-            "%s > 0", "%s < " + str(_ext.spn_max_cartesian_dim()), 
+            "%s > 0", "%s <= " + str(_ext.spn_max_cartesian_dim()), 
             "isinstance(%s, numbers.Integral)")
 
         self._kernel_size = ec.make_list(kernel_size, ndim, "kernel_size", 
@@ -50,13 +50,15 @@ class ConvSP(torch.nn.Module):
             "%s >= 0", "isinstance(%s, numbers.Real)")
 
         self.ncells = np.prod(self._kernel_size)
-        self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(self.nkernels, self.nchannels, self.ncells)))
+        self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(self.nkernels, 
+                                    self.nchannels, self.ncells)))
         self.register_parameter("bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
 
         self.register_buffer("kernel_size", ec.list2tensor(self._kernel_size))
         self.register_buffer("dilation", ec.list2tensor(self._dilation))
 
-    def forward(self, locs, data, density):
+    def forward(self, locs, data, density, cellIdxs, originalIdxs, cellStart, cellEnd, 
+                    gridShape):
         """ Compute a forward pass of the Smooth Particle Convolution Layer.
 
         Inputs:
@@ -86,7 +88,8 @@ class ConvSP(torch.nn.Module):
         convsp = _ConvSPFunction(self.radius, self.kernel_size, self.dilation,
             self.ncells)
         # data.shape = BxCxN
-        data = convsp(locs, data, density, self.weight, self.bias)
+        data = convsp(locs, data, density, cellIdxs, originalIdxs, cellStart, cellEnd, 
+            gridShape, self.weight, self.bias)
         # data.shape = BxOxN
         return data
 
@@ -107,19 +110,25 @@ class _ConvSPFunction(torch.autograd.Function):
         self.dilation = dilation
         self.ncells = ncells
 
-    def forward(self, locs, data, density, weight, bias):
-        self.save_for_backward(locs, data, density, weight, bias)
+    def forward(self, locs, data, density, cellIdxs, originalIdxs, cellStart, cellEnd, 
+                    gridShape, weight, bias):
+        self.save_for_backward(locs, data, density, cellIdxs, originalIdxs, cellStart, cellEnd, 
+            gridShape, weight, bias)
         batch_size = locs.size()[0]
         N = locs.size()[1]
         nkernels = weight.size()[0]
         ret = data.new(batch_size, nkernels, N)
         ret.fill_(0)
         if locs.is_cuda:
-            if not _ext.spnc_convsp_forward(locs, data, density, weight, bias, self.radius, 
+            if not _ext.spnc_convsp_forward(locs, data, density, cellIdxs, originalIdxs, 
+                        cellStart, 
+                        cellEnd, gridShape, weight, bias, self.radius, 
                         self.kernel_size, self.dilation, ret):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_forward(locs, data, density, weight, bias, self.radius, 
+            _ext.spn_convsp_forward(locs, data, density, cellIdxs, originalIdxs, cellStart, 
+                cellEnd, 
+                gridShape, weight, bias, self.radius, 
                 self.kernel_size, self.dilation, ret)
 
         # Add the bias.
@@ -129,18 +138,22 @@ class _ConvSPFunction(torch.autograd.Function):
 
 
     def backward(self, grad_output):
-        locs, data, density, weight, bias = self.saved_tensors
+        (locs, data, density, cellIdxs, originalIdxs, 
+            cellStart, cellEnd, gridShape, weight, bias) = self.saved_tensors
         ret_data = grad_output.new(data.size())
         ret_data.fill_(0)
         ret_weight = grad_output.new(weight.size())
         ret_weight.fill_(0)
         if grad_output.is_cuda:
-            if not _ext.spnc_convsp_backward(locs, data, density, weight, bias, self.radius, 
+            if not _ext.spnc_convsp_backward(locs, data, density, cellIdxs, originalIdxs, 
+                        cellStart, 
+                        cellEnd, gridShape, weight, bias, self.radius, 
                         self.kernel_size, self.dilation, grad_output, ret_data,
                         ret_weight):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_backward(locs, data, density, weight, bias, self.radius, 
+            _ext.spn_convsp_backward(locs, data, density, cellIdxs, originalIdxs, cellStart, 
+                cellEnd, gridShape, weight, bias, self.radius, 
                 self.kernel_size, self.dilation, grad_output, ret_data, ret_weight)
 
         # PyTorch requires gradients for each input, but we only care about the
@@ -148,6 +161,11 @@ class _ConvSPFunction(torch.autograd.Function):
         return (grad_output.new(locs.size()).fill_(0), 
                 ret_data, 
                 grad_output.new(density.size()).fill_(0),
+                grad_output.new(cellIdxs.size()).fill_(0),
+                grad_output.new(originalIdxs.size()).fill_(0),
+                grad_output.new(cellStart.size()).fill_(0),
+                grad_output.new(cellEnd.size()).fill_(0),
+                grad_output.new(gridShape.size()).fill_(0),
                 ret_weight,
                 grad_output.sum(2).sum(0))
 

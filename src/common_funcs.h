@@ -182,6 +182,40 @@ float nlinear_interp(float* grid, float* grid_dims, int ndims, float cell_size, 
 	return rec_nlinear_interp(grid, grid_dims, ndims, point01, lowidx, 0);
 }
 
+DEVICE_FUNC
+void cellIdx2gridCoords(uint hash, float* gridDims, int ndims, int* gridCoords)
+{
+	int i, j;
+	for(i = 0; i < ndims; ++i)
+	{
+		int stride = 1;
+		for(j = i + 1; j < ndims; ++j)
+			stride *= gridDims[j];
+		gridCoords[i] = hash/stride;
+		hash %= stride;
+	}
+}
+DEVICE_FUNC
+uint gridCoords2cellIdx(int* gridCoords, float* gridDims, int ndims)
+{
+	uint ret = 0;
+	int i, j;
+	for(i = 0; i < ndims; ++i)
+	{
+		int stride = 1;
+		for(j = i + 1; j < ndims; ++j)
+			stride *= gridDims[j];
+		ret += gridCoords[i]*stride;
+	}
+	return ret;
+}
+
+DEVICE_FUNC
+int clip(int val, int low, int high)
+{
+	return (val > high ? high : (val < low ? low : val));
+}
+
 
 /**
 Function that that computes the partial values for the kernel cells for a given particle.
@@ -219,93 +253,124 @@ given particle. Inputs are:
 			 NULL (backward computation).
 **/
 DEVICE_FUNC
-void compute_kernel_cells(float* locs, float* data, float* density, float* weight, 
+void compute_kernel_cells(float* locs, float* data, float* density, 
+	float* cellIdxs, float* originalIndex, float* cellStart, float* cellEnd, 
+	float* gridShape, float* weight, 
 	float* bias, int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells,
+	int cell_stride,
 	float radius, float* kernel_size, float* dilation, float* out, int b, int n, int start, 
 	int end, float* ddata, float* dweight)
 {
-	int idxs[MAX_CARTESIAN_DIM];
+	int kernidxs[MAX_CARTESIAN_DIM];
+	int ncidx[MAX_CARTESIAN_DIM];
+	int shiftcidx[MAX_CARTESIAN_DIM];
+	float shiftcbounds[MAX_CARTESIAN_DIM];
+	int cidx[MAX_CARTESIAN_DIM];
 	float* r = locs + (b*N + n)*(ndims + 1);
 	int backward = ((ddata != NULL) || (dweight != NULL));
-	float* out_ptr = out + b*nkernels*N + n;
-
+	float* out_ptr = out + b*nkernels*N + (uint)originalIndex[n];
+	cellIdx2gridCoords(cellIdxs[b*N + n], gridShape + b*ndims, ndims, ncidx);
 	int j;
-	for(j = start; j < end && j < N; ++j)
+	int ngridcells = 1;
+	for(j = 0; j < MAX_CARTESIAN_DIM; ++j)
 	{
-		float* r2 = locs + (b*N + j)*(ndims + 1);
-		float d = dissqr(r, r2, ndims);
-		float dd = fastroot(ndims);
-		float maxdil = lmaxf(dilation, ndims);
-		int maxkern = (int)lmaxf(kernel_size, ndims)/2;
-		float nr = radius + maxkern*maxdil*dd;
-		if(d > nr*nr)
-			continue;
+		shiftcbounds[j] = 3;
+		ngridcells *= 3;
+	}
 
-		
-		int k;
-		for(k = 0; k < ndims; ++k)
-			idxs[k] = 0;
-		
-		
-		float* data_ptr = data + b*nchannels*N + j;
-		float* ddata_ptr = ddata + b*nchannels*N + j;
-		int kernel_idx;
-		for(kernel_idx = 0; idxs[ndims-1] < kernel_size[ndims-1]; ++kernel_idx)
+	int shift_cell_idx;
+	for(shift_cell_idx = start; shift_cell_idx < ngridcells && 
+			shift_cell_idx < end; ++shift_cell_idx)
+	{
+		cellIdx2gridCoords(shift_cell_idx, shiftcbounds, ndims, shiftcidx);
+		int inbounds = 1;
+		for(j = 0; j < ndims && inbounds; ++j)
 		{
-			d = 0.0f;
-			for(k = 0; k < ndims; ++k)
+			cidx[j] = ncidx[j] + shiftcidx[j] - 1;
+			if(cidx[j] < 0 || cidx[j] >= gridShape[b*ndims + j] )
+				inbounds = 0;
+		}
+		if(!inbounds)
+			continue;
+		uint cell_idx = gridCoords2cellIdx(cidx, gridShape + b*ndims, ndims);
+// printf("b=%d, cell_stride=%d, cell_idx=%d, ncidx=(%d,%d,%d), cidx=(%d,%d,%d),"
+// 	" shiftcidx=(%d,%d,%d)\n", 
+// 	b, cell_stride, cell_idx,
+// 	ncidx[0], ncidx[1], ncidx[2],
+// 	cidx[0], cidx[1], cidx[2],
+// 	shiftcidx[0], shiftcidx[1], shiftcidx[2]);
+		for(j = (int)cellStart[b*cell_stride + cell_idx]; 
+				j < (int)cellEnd[b*cell_stride + cell_idx]; ++j)
+		{
+			float* r2 = locs + (b*N + j)*(ndims + 1);
+			float d = dissqr(r, r2, ndims);
+			float dd = fastroot(ndims);
+			float maxdil = lmaxf(dilation, ndims);
+			int maxkern = (int)lmaxf(kernel_size, ndims)/2;
+			float nr = radius + maxkern*maxdil*dd;
+			if(d > nr*nr)
+				continue;
+			
+			
+			float* data_ptr = data + b*nchannels*N + j;
+			float* ddata_ptr = ddata + b*nchannels*N + j;
+			int kernel_idx;
+			int kernel_idx_max = 1;
+			for(kernel_idx = 0; kernel_idx < ndims; ++kernel_idx)
+				kernel_idx_max *= kernel_size[kernel_idx];
+			for(kernel_idx = 0; kernel_idx < kernel_idx_max; ++kernel_idx)
 			{
-				nr = r[k] + (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - r2[k];
-				d += nr*nr;
-			}
-			if(d < radius*radius)
-			{
-				d = sqrtf(d);
-				int outk, ink;
-				for(outk = 0; outk < nkernels; ++outk)
+				cellIdx2gridCoords(kernel_idx, kernel_size, ndims, kernidxs);
+				d = 0.0f;
+				int k;
+				for(k = 0; k < ndims; ++k)
 				{
-					for(ink = 0; ink < nchannels; ++ink)
+					nr = r[k] + (kernidxs[k] - ((int)kernel_size[k])/2)*dilation[k] - r2[k];
+					d += nr*nr;
+				}
+				if(d < radius*radius)
+				{
+					d = sqrtf(d);
+					int outk, ink;
+					for(outk = 0; outk < nkernels; ++outk)
 					{
-						// The full pointer computation for reference. Common 
-						// terms have been taken out of the loop for
-						// efficiency.
-						// out + 
-						//   b*nkernels*N + 
-						//   outk*N +
-						//   n 
-						// data + b*nchannels*N + ink*N + j
-						if(backward)
+						for(ink = 0; ink < nchannels; ++ink)
 						{
-							if(ddata != NULL)
-								atomicAdd(ddata_ptr + ink*N, 
-									(*(out_ptr + outk*N))*
+							// The full pointer computation for reference. Common 
+							// terms have been taken out of the loop for
+							// efficiency.
+							// out + 
+							//   b*nkernels*N + 
+							//   outk*N +
+							//   n 
+							// data + b*nchannels*N + ink*N + j
+							if(backward)
+							{
+								if(ddata != NULL)
+									atomicAdd(ddata_ptr + ink*N, 
+										(*(out_ptr + outk*N))*
 									weight[outk*nchannels*ncells + ink*ncells + kernel_idx]*
-									1.0f/(r2[ndims]*density[b*N + j])*
-									kernel_w(d, radius));
-							if(dweight != NULL)
-								atomicAdd(dweight + outk*nchannels*ncells + 
-											ink*ncells + kernel_idx, 
-									(*(out_ptr + outk*N))*
+										1.0f/(r2[ndims]*density[b*N + j])*
+										kernel_w(d, radius));
+								if(dweight != NULL)
+									atomicAdd(dweight + outk*nchannels*ncells + 
+												ink*ncells + kernel_idx, 
+										(*(out_ptr + outk*N))*
+										1.0f/(r2[ndims]*density[b*N + j])*
+										(*(data_ptr + ink*N))*
+										kernel_w(d, radius));
+							}
+							else
+							{
+								atomicAdd(out_ptr + outk*N, 
+									weight[outk*nchannels*ncells + ink*ncells + kernel_idx]*
 									1.0f/(r2[ndims]*density[b*N + j])*
 									(*(data_ptr + ink*N))*
 									kernel_w(d, radius));
-						}
-						else
-						{
-							atomicAdd(out_ptr + outk*N, 
-								weight[outk*nchannels*ncells + ink*ncells + kernel_idx]*
-								1.0f/(r2[ndims]*density[b*N + j])*
-								(*(data_ptr + ink*N))*
-								kernel_w(d, radius));
+							}
 						}
 					}
 				}
-			}
-			++idxs[0];
-			for(k = 0; k < ndims - 1 && idxs[k] >= kernel_size[k]; ++k)
-			{
-				idxs[k] = 0;
-				++idxs[k+1];
 			}
 		}
 	}
