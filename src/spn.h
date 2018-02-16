@@ -25,3 +25,5 @@ int spn_convsdf_backward(THFloatTensor* locs_t, THFloatTensor* idxs_t, THFloatTe
     THFloatTensor* sdf_shapes_t, THFloatTensor* weight_t, THFloatTensor* bias_t, 
     THFloatTensor* kernel_size_t, THFloatTensor* dilation_t, float max_distance,
     THFloatTensor* out_t, THFloatTensor* dweight_t);
+
+int spn_neighborlist(THFloatTensor* locs_t, float radius, THFloatTensor* neighborlist_t);

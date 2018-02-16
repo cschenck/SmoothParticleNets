@@ -18,3 +18,5 @@ int spnc_convsdf_backward(THCudaTensor* locs_t, THCudaTensor* idxs_t, THCudaTens
     THCudaTensor* sdf_shapes_t, THCudaTensor* weight_t, THCudaTensor* bias_t, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, float max_distance,
     THCudaTensor* out_t, THCudaTensor* dweight_t);
+
+int spnc_neighborlist(THCudaTensor* locs_t, float radius, THCudaTensor* neighborlist_t);

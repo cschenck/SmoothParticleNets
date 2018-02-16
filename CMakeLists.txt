@@ -16,6 +16,8 @@ set(layer_src
 	${PROJECT_SOURCE_DIR}/src/gpu_kernels.cu
 	${PROJECT_SOURCE_DIR}/src/gpu_kernels.h
 	${PROJECT_SOURCE_DIR}/src/spn.h
+	${PROJECT_SOURCE_DIR}/src/cuda_spn.h
+	${PROJECT_SOURCE_DIR}/src/non_cuda_spn.h
     ${PROJECT_SOURCE_DIR}/src/constants.h
     ${PROJECT_SOURCE_DIR}/src/common_funcs.h
 )

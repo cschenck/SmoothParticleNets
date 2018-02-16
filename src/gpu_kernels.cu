@@ -131,7 +131,7 @@ int cuda_convsp(float* locs, float* data, float* density, float* neighborlist,
 	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
 	float* dweight, cudaStream_t stream)
 {
-	const int NUM_BLOCKS = 1;
+	const int NUM_BLOCKS = 4;
 	int nops = batch_size*N*NUM_BLOCKS;
     int numBlocks = ceil(nops * (1.0/256));
     dim3 blocks(numBlocks);
@@ -224,6 +224,46 @@ int cuda_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
 	        return 0;
     }
     return 1;
+}
+
+__global__
+void kernel_neighborlist(float* locs, float* neighborlist, int batch_size, int N,
+    int ndims, int nneighbors, float radius, int num_blocks)
+{
+	int block_size = ceilf(1.0f*N/num_blocks);
+
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < N*batch_size*num_blocks; i += stride)
+    {
+    	int b = i/(N*num_blocks);
+    	int n = (i % (N*num_blocks))/num_blocks;
+    	int block = i % num_blocks;
+    	int start = block*block_size;
+
+    	compute_neighborlist(locs, neighborlist, batch_size, N, ndims, nneighbors,
+    		radius, b, n, start, start + block_size);
+    }
+}
+int cuda_neighborlist(float* locs, float* neighborlist, int batch_size, int N,
+    int ndims, int nneighbors, float radius, cudaStream_t stream)
+{
+	const int NUM_BLOCKS = 4;
+	int nops = batch_size*N*NUM_BLOCKS;
+    int numBlocks = ceil(nops * (1.0/256));
+    dim3 blocks(numBlocks);
+    dim3 threads(256);
+
+	kernel_neighborlist<<<blocks, threads, 0, stream>>>(locs, neighborlist, batch_size,
+		N, ndims, nneighbors, radius, NUM_BLOCKS);
+	cudaDeviceSynchronize();
+	// check for errors
+	cudaError_t err = cudaGetLastError();
+	if (err != cudaSuccess) {
+	printf("error in cuda_neighborlist: %s\n", cudaGetErrorString(err));
+		return 0;
+	}
+	return 1;
 }
 
 

@@ -16,6 +16,9 @@ int cuda_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
     float* kernel_size, float* dilation, float max_distance, float* out, float* dweight, 
     cudaStream_t stream);
 
+int cuda_neighborlist(float* locs, float* neighborlist, int batch_size, int N,
+    int ndims, int nneighbors, float radius, cudaStream_t stream);
+
 #ifdef __cplusplus
 }
 #endif

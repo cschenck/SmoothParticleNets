@@ -18,6 +18,9 @@ int cpu_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
     float* sdf_shapes, float* weight, float* bias, int nkernels, int ncells, 
     float* kernel_size, float* dilation, float max_distance, float* out, float* dweight);
 
+int cpu_neighborlist(float* locs, float* neighborlist, int batch_size, int N,
+    int ndims, int nneighbors, float radius);
+
 
 int spn_max_cartesian_dim(void)
 {
@@ -194,5 +197,36 @@ int cpu_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
     }
     free(isdf_cache);
     free(fsdf_cache);
+    return 1;
+}
+
+
+
+
+
+int spn_neighborlist(THFloatTensor* locs_t, float radius, THFloatTensor* neighborlist_t)
+{
+    float* locs = THFloatTensor_data(locs_t);
+    float* neighborlist = THFloatTensor_data(neighborlist_t);
+    int batch_size = locs_t->size[0];
+    int N = locs_t->size[1];
+    int ndims = locs_t->size[2] - 1;
+    int nneighbors = neighborlist_t->size[2];
+
+    return cpu_neighborlist(locs, neighborlist, batch_size, N, ndims, nneighbors, radius);
+}
+
+int cpu_neighborlist(float* locs, float* neighborlist, int batch_size, int N,
+    int ndims, int nneighbors, float radius)
+{
+    int b, n;
+    for(b = 0; b < batch_size; ++b)
+    {
+        for(n = 0; n < N; ++n)
+        {
+            compute_neighborlist(locs, neighborlist, batch_size, N, ndims, nneighbors, 
+                radius, b, n, 0, N);
+        }
+    }
     return 1;
 }

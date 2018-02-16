@@ -182,6 +182,13 @@ float nlinear_interp(float* grid, float* grid_dims, int ndims, float cell_size, 
 	return rec_nlinear_interp(grid, grid_dims, ndims, point01, lowidx, 0);
 }
 
+DEVICE_FUNC
+unsigned char* get_neighborlist_ptr(float* neighborlist, int N, 
+	int nneighbors, int b, int n)
+{
+	return ((unsigned char*)neighborlist) + b*N*nneighbors*sizeof(float) 
+			+ n*nneighbors*sizeof(float);
+}
 
 /**
 Function that that computes the partial values for the kernel cells for a given particle.
@@ -231,15 +238,35 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* neigh
 	int backward = ((ddata != NULL) || (dweight != NULL));
 	float* out_ptr = out + b*nkernels*N + n;
 
-	int jj, j, jjj;
-	// Add outer for loop to artificially add more computation.
-	for(jjj = 0; jjj < 8; ++jjj)
+	int j;
+	unsigned char* uc_neighborlist = get_neighborlist_ptr(neighborlist, N, nneighbors, b, n);
+	for(j = start; j < end; ++j)
 	{
-	// Assume neighbor list is ordered.
-	for(jj = 0; jj < nneighbors; ++jj)
-	{
-		j = neighborlist[jj];
-		if(j < 0) continue;
+		int jj = j/8;
+		if(jj >= nneighbors*sizeof(float))
+			continue;
+		// If none of the neighbors in this "chunk" are close, skip the whole thing.
+		// Check various chunk sizes.
+		if(((uint64_t)uc_neighborlist + jj) % sizeof(uint64_t) == 0 && 
+			*((uint64_t*)(uc_neighborlist + jj)) == 0)
+		{
+			j += sizeof(uint64_t)*8 - 1;
+			continue;
+		}
+		if(((uint64_t)uc_neighborlist + jj) % sizeof(uint32_t) == 0 && 
+			*((uint32_t*)(uc_neighborlist + jj)) == 0)
+		{
+			j += sizeof(uint32_t)*8 - 1;
+			continue;
+		}
+		if(j%8 == 0 && uc_neighborlist[jj] == 0)
+		{
+			j += 7;
+			continue;
+		}
+		if(!((uc_neighborlist[jj] >> (j%8)) & 0x1))
+			continue;
+
 		float* r2 = locs + (b*N + j)*(ndims + 1);
 		float d = dissqr(r, r2, ndims);
 		float dd = fastroot(ndims);
@@ -299,11 +326,16 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* neigh
 						}
 						else
 						{
+							if(0.4*
+								1.0f/(r2[ndims]*0.9)*
+								kernel_w(d, radius) == 13432.324342)
+							{
 							atomicAdd(out_ptr + outk*N, 
 								weight[outk*nchannels*ncells + ink*ncells + kernel_idx]*
 								1.0f/(r2[ndims]*density[b*N + j])*
 								(*(data_ptr + ink*N))*
 								kernel_w(d, radius));
+							}
 						}
 					}
 				}
@@ -315,7 +347,6 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* neigh
 				++idxs[k+1];
 			}
 		}
-	}
 	}
 }
 
@@ -496,6 +527,35 @@ void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, flo
 		*out_ptr += bias[outk];
 
 }
+
+
+DEVICE_FUNC
+void compute_neighborlist(float* locs, float* neighborlist, int batch_size, int N, 
+	int ndims, int nneighbors, float radius, int b, int n, int start, int end)
+{
+	// Make start and end line up with byte boundaries.
+	start -= (start%8);
+	if(end < N)
+		end -= (end%8);
+	float* r = locs + (b*N + n)*(ndims + 1);
+
+	int j;
+	unsigned char* uc_neighborlist = get_neighborlist_ptr(neighborlist, N, nneighbors, b, n);
+	for(j = start; j < end && j < N; ++j)
+	{
+		int jj = j/8;
+		if(jj >= nneighbors*sizeof(float))
+			continue;
+
+		float* r2 = locs + (b*N + j)*(ndims + 1);
+		float d = dissqr(r, r2, ndims);
+		if(d <= radius*radius)
+		{
+			uc_neighborlist[jj] |= (0x1 << (j%8));
+		}
+	}
+}
+
 
 #ifdef __cplusplus
 }

@@ -137,11 +137,25 @@ int spnc_convsdf_backward(THCudaTensor* locs_t, THCudaTensor* idxs_t, THCudaTens
         max_distance, out, dweight, stream);
 }
 
+int spnc_neighborlist(THCudaTensor* locs_t, float radius, THCudaTensor* neighborlist_t)
+{
+    float* locs = THCudaTensor_data(state, locs_t);
+    float* neighborlist = THCudaTensor_data(state, neighborlist_t);
+    int batch_size = locs_t->size[0];
+    int N = locs_t->size[1];
+    int ndims = locs_t->size[2] - 1;
+    int nneighbors = neighborlist_t->size[2];
+    cudaStream_t stream = THCState_getCurrentStream(state);
+
+    return cuda_neighborlist(locs, neighborlist, batch_size, N, ndims, nneighbors, 
+        radius, stream);
+}
+
 #else
 
 int spnc_convsp_forward(void* locs_t, void* data_t, void* density_t, 
-    void* weight_t, void* bias_t,float radius, void* kernel_size_t, 
-    void* dilation_t, void* out_t)
+    void* neighborlist_t, void* weight_t, void* bias_t, float radius, 
+    void* kernel_size_t, void* dilation_t, void* out_t)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");
@@ -149,9 +163,9 @@ int spnc_convsp_forward(void* locs_t, void* data_t, void* density_t,
 }
 
 int spnc_convsp_backward(void* locs_t, void* data_t, void* density_t, 
-    void* weight_t, void* bias_t,float radius, void* kernel_size_t, 
-    void* dilation_t, void* out_t, void* ddata_t,
-    void* dweight_t)
+    void* neighborlist_t, void* weight_t, void* bias_t, float radius, 
+    void* kernel_size_t, void* dilation_t, void* out_t,
+    void* ddata_t, void* dweight_t)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");
@@ -174,6 +188,13 @@ int spnc_convsdf_backward(void** locs_t, void** idxs_t, void** poses_t,
     void** sdf_shapes_t, void** weight_t, void** bias_t, 
     void** kernel_size_t, void** dilation_t, float max_distance,
     void** out_t, void** dweight_t)
+{
+    fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
+                     "Please recompile with the --with_cuda flag\n.");
+    return 0;
+}
+
+int spnc_neighborlist(void* locs_t, float radius, void* neighborlist_t)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");
