@@ -118,7 +118,6 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
     	int n = (i % (N*num_blocks))/num_blocks;
     	int block = i % num_blocks;
     	int start = block*block_size;
-
     	compute_kernel_cells(locs, data, density, weight, bias, batch_size, N, 
     		nchannels, ndims, nkernels, ncells, radius, kernel_size, dilation, 
     		out, b, n, start, start + block_size, ddata, dweight);
@@ -129,7 +128,7 @@ int cuda_convsp(float* locs, float* data, float* density, float* weight, float* 
 	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
 	float* dweight, cudaStream_t stream)
 {
-	const int NUM_BLOCKS = 4;
+	const int NUM_BLOCKS = 8;
 	int nops = batch_size*N*NUM_BLOCKS;
     int numBlocks = ceil(nops * (1.0/256));
     dim3 blocks(numBlocks);

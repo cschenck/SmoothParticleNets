@@ -227,7 +227,13 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 	int idxs[MAX_CARTESIAN_DIM];
 	float* r = locs + (b*N + n)*(ndims + 1);
 	int backward = ((ddata != NULL) || (dweight != NULL));
-	float* out_ptr = out + b*nkernels*N + n;
+	float* out_ptrn = out + b*nkernels*N + n;
+	float* data_ptrn = data + b*nchannels*N + n;
+	float* ddata_ptrn = ddata + b*nchannels*N + n;
+	float voln = 1.0f/(r[ndims]*density[b*N + n]);
+
+	if(start < n)
+		start = n;
 
 	int j;
 	for(j = start; j < end && j < N; ++j)
@@ -246,9 +252,6 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 		for(k = 0; k < ndims; ++k)
 			idxs[k] = 0;
 		
-		
-		float* data_ptr = data + b*nchannels*N + j;
-		float* ddata_ptr = ddata + b*nchannels*N + j;
 		int kernel_idx;
 		for(kernel_idx = 0; idxs[ndims-1] < kernel_size[ndims-1]; ++kernel_idx)
 		{
@@ -262,6 +265,11 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 			{
 				d = sqrtf(d);
 				int outk, ink;
+				float volj = 1.0f/(r2[ndims]*density[b*N + j]);
+				float* out_ptrj = out + b*nkernels*N + j;
+				float* data_ptrj = data + b*nchannels*N + j;
+				float* ddata_ptrj = ddata + b*nchannels*N + j;
+				float kw = kernel_w(d, radius);
 				for(outk = 0; outk < nkernels; ++outk)
 				{
 					for(ink = 0; ink < nchannels; ++ink)
@@ -274,29 +282,36 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 						//   outk*N +
 						//   n 
 						// data + b*nchannels*N + ink*N + j
+						float weightnj = weight[outk*nchannels*ncells + ink*ncells + kernel_idx];
+						float weightjn = weight[outk*nchannels*ncells + ink*ncells + 
+													(ncells - kernel_idx - 1)];
+						
 						if(backward)
 						{
 							if(ddata != NULL)
-								atomicAdd(ddata_ptr + ink*N, 
-									(*(out_ptr + outk*N))*
-									weight[outk*nchannels*ncells + ink*ncells + kernel_idx]*
-									1.0f/(r2[ndims]*density[b*N + j])*
-									kernel_w(d, radius));
+							{
+								atomicAdd(ddata_ptrj + ink*N, 
+									(*(out_ptrn + outk*N))*weightnj*volj*kw);
+								if(j != n)
+									atomicAdd(ddata_ptrn + ink*N, 
+										(*(out_ptrj + outk*N))*weightjn*voln*kw);
+							}
 							if(dweight != NULL)
-								atomicAdd(dweight + outk*nchannels*ncells + 
-											ink*ncells + kernel_idx, 
-									(*(out_ptr + outk*N))*
-									1.0f/(r2[ndims]*density[b*N + j])*
-									(*(data_ptr + ink*N))*
-									kernel_w(d, radius));
+							{
+								atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + kernel_idx, 
+									(*(out_ptrn + outk*N))*volj*(*(data_ptrj + ink*N))*kw);
+								if(j != n)
+									atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + 
+											  (ncells - kernel_idx - 1), 
+										(*(out_ptrj + outk*N))*voln*(*(data_ptrn + ink*N))*kw);
+							}
 						}
 						else
 						{
-							atomicAdd(out_ptr + outk*N, 
-								weight[outk*nchannels*ncells + ink*ncells + kernel_idx]*
-								1.0f/(r2[ndims]*density[b*N + j])*
-								(*(data_ptr + ink*N))*
-								kernel_w(d, radius));
+							atomicAdd(out_ptrn + outk*N, weightnj*volj*(*(data_ptrj + ink*N))*kw);
+							if(j != n)
+								atomicAdd(out_ptrj + outk*N, 
+									weightjn*voln*(*(data_ptrn + ink*N))*kw);
 						}
 					}
 				}

@@ -19,11 +19,15 @@ KERNEL_SIZES = [
 	(3,3,3),
 ]
 
-CHANNEL_SIZES = range(1, 16)
+CHANNEL_SIZES = range(1, 33)
+RADIUS = 0.04
+DILATION = 0.01
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--datapath', required=True, action="store", type=str)
 args = parser.parse_args()
+
+
 
 print("Loading dataset...")
 dataset = pickle.load(open(args.datapath, "rb"))
@@ -39,7 +43,7 @@ for j, channels in enumerate(CHANNEL_SIZES):
 	for i, kernel_size in enumerate(KERNEL_SIZES):
 		print("\tRunning tests for kernel size %s..." % str(kernel_size))
 		conv = spn.ConvSP(channels, channels, dataset[0]['locs'].size()[-1] - 1,
-			kernel_size, 0.05, 0.1)
+			kernel_size, RADIUS, DILATION)
 		conv = conv.cuda()
 		[p.data.normal_(0, 1) for p in conv.parameters()]
 		t = 0
