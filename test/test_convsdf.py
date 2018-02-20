@@ -13,6 +13,7 @@ import Queue
 import torch
 import torch.autograd
 
+from gradcheck import gradcheck
 from regular_grid_interpolater import RegularGridInterpolator
 try:
     import pytest_args

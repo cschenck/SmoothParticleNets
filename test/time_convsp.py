@@ -13,6 +13,7 @@ import time
 import torch
 from torch.autograd import Variable
 
+
 KERNEL_SIZES = [
 	(1,1,1),
 	(3,1,1),

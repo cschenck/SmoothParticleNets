@@ -308,10 +308,11 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 						}
 						else
 						{
-							atomicAdd(out_ptrn + outk*N, weightnj*volj*(*(data_ptrj + ink*N))*kw);
+							float f1 = weightnj*volj*(*(data_ptrj + ink*N))*kw;
+							float g1 = weightjn*voln*(*(data_ptrn + ink*N))*kw;
+							atomicAdd(out_ptrn + outk*N, f1);
 							if(j != n)
-								atomicAdd(out_ptrj + outk*N, 
-									weightjn*voln*(*(data_ptrn + ink*N))*kw);
+								atomicAdd(out_ptrj + outk*N, g1);
 						}
 					}
 				}

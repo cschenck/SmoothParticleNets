@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.autograd
 
+from gradcheck import gradcheck
 try:
     import pytest_args
 except ImportError:
@@ -107,7 +108,7 @@ def eval_convsp(cuda=False):
         convsp.weight = w
         convsp.bias = b
         return (convsp(locs, d, density),)
-    assert torch.autograd.gradcheck(func, (data, weights, biases), eps=1e-2, atol=1e-3)
+    assert gradcheck(func, (data, weights, biases), eps=1e-2, atol=1e-3)
 
 
 
