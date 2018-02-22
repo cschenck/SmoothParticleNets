@@ -100,51 +100,212 @@ float atomicMin(float *addr, float value)
     return old;
 }
 
+
+int PrintOnCudaError(const char* fn_name)
+{
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("error in %s: %s\n", fn_name, cudaGetErrorString(err));
+        return 0;
+    }
+    return 1;
+}
+
+
+size_t GetSharedMemPerBlock(int device)
+{
+    cudaDeviceProp p;
+    cudaGetDeviceProperties(&p, device);
+    if(!PrintOnCudaError("GetSharedMemPerBlock"))
+        return 0;
+    else
+        return p.sharedMemPerBlock;
+}
+
+
 /* Layer Funcs */
 
 __global__
 void kernel_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
 	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
 	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
-	float* dweight, int num_blocks)
+	float* dweight, int block_size, int num_blocks)
 {
-	int block_size = ceilf(1.0f*N/num_blocks);
+	extern __shared__ float shared_ptr[];
 
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = blockDim.x * gridDim.x;
-    for (int i = index; i < N*batch_size*num_blocks; i += stride)
-    {
-    	int b = i/(N*num_blocks);
-    	int n = (i % (N*num_blocks))/num_blocks;
-    	int block = i % num_blocks;
-    	int start = block*block_size;
-    	compute_kernel_cells(locs, data, density, weight, bias, batch_size, N, 
-    		nchannels, ndims, nkernels, ncells, radius, kernel_size, dilation, 
-    		out, b, n, start, start + block_size, ddata, dweight);
-    }
+	// First compute where in the block we are.
+	int b = blockIdx.x;
+	int num_blocks2 = num_blocks*(num_blocks + 1)/2;
+	int bi = num_blocks - 1 - floorf((sqrtf(8*(num_blocks2 - 1 - blockIdx.y) + 1) - 1)/2);
+	int bj = num_blocks - num_blocks2 + blockIdx.y + 
+				(num_blocks - 1 - bi)*(num_blocks - bi)/2;
+	int starti = bi*block_size;
+	int endi = fminf(N, (bi + 1)*block_size);
+	int ni = endi - starti;
+	int startj = bj*block_size;
+	int endj = fminf(N, (bj + 1)*block_size);
+	int nj = endj - startj;
+	int th = threadIdx.x;
+	int backwards = (ddata != NULL || dweight != NULL);
+
+	// Next copy over the weight.
+	float* ptr = shared_ptr;
+	int i;
+	for(i = th; i < nkernels*nchannels*ncells; i += blockDim.x)
+		ptr[i] = weight[i];
+	float* weight_p = ptr;
+	ptr += nkernels*nchannels*ncells;
+
+	// Copy over the kernel_size and dilation.
+	for(i = th; i < ndims; i += blockDim.x)
+	{
+		ptr[i] = kernel_size[i];
+		ptr[ndims + i] = dilation[i];
+	}
+	float* kernel_size_p = ptr;
+	float* dilation_p = ptr + ndims;
+	ptr += 2*ndims;
+
+	// Alocate space for dweight only if we're going backwards. Only copy
+	// dweight over after.
+	float* dweight_p = NULL;
+	if(dweight != NULL)
+	{
+		for(i = th; i < nkernels*nchannels*ncells; i += blockDim.x)
+			ptr[i] = 0.0f;
+		dweight_p = ptr;
+		ptr += nkernels*nchannels*ncells;
+	}
+
+	// Next we're going to copy over particle data. Since we're computing for 2 blocks,
+	// make sure to copy the data over for each pointer sequentially.
+	// Start with locs.
+	float* locs_p = ptr;
+	for(i = th; i < ni*(ndims + 1); i += blockDim.x)
+		ptr[i] = locs[b*N*(ndims + 1) + starti*(ndims + 1) + i];
+	ptr += ni*(ndims + 1);
+	for(i = th; i < nj*(ndims + 1); i += blockDim.x)
+		ptr[i] = locs[b*N*(ndims + 1) + startj*(ndims + 1) + i];
+	ptr += nj*(ndims + 1);
+
+	// Copy over data.
+	float* data_p = ptr;
+	for(i = th; i < ni*nchannels; i += blockDim.x)
+		ptr[i] = data[b*N*nchannels + starti*nchannels + i];
+	ptr += ni*nchannels;
+	for(i = th; i < nj*nchannels; i += blockDim.x)
+		ptr[i] = data[b*N*nchannels + startj*nchannels + i];
+	ptr += nj*nchannels;
+
+	// Copy over density.
+	float* density_p = ptr;
+	for(i = th; i < ni; i += blockDim.x)
+		ptr[i] = density[b*N + starti + i];
+	ptr += ni;
+	for(i = th; i < nj; i += blockDim.x)
+		ptr[i] = density[b*N + startj + i];
+	ptr += nj;
+
+	// Copy over out.
+	float* out_p = ptr;
+	for(i = th; i < ni*nkernels; i += blockDim.x)
+		ptr[i] = (backwards ? out[b*N*nkernels + starti*nkernels + i] : 0.0f);
+	ptr += ni*nkernels;
+	for(i = th; i < nj*nkernels; i += blockDim.x)
+		ptr[i] = (backwards ? out[b*N*nkernels + startj*nkernels + i] : 0.0f);
+	ptr += nj*nkernels;
+
+	// Alocate space for ddata only if we're going backwards. Only copy
+	// ddata over after.
+	float* ddata_p = NULL;
+	if(ddata != NULL)
+	{
+		ddata_p = ptr;
+		for(i = th; i < ni*nchannels; i += blockDim.x)
+			ptr[i] = 0.0f;
+		ptr += ni*nchannels;
+		for(i = th; i < nj*nchannels; i += blockDim.x)
+			ptr[i] = 0.0f;
+		ptr += nj*nchannels;
+	}
+
+	// Wait for the copying to finish.
+	__syncthreads();
+
+	int nops = ceilf(1.0f*ni*nj/blockDim.x);
+	for(i = th*nops; i < (th + 1)*nops;)
+	{
+		int n = i/nj;
+		if(n >= ni) break;
+		int start = (i % nj) + (bi == bj ? 0 : ni);
+		int end = fminf(nj, (i % nj) + (th + 1)*nops - i) + (bi == bj ? 0 : ni);
+		if(start >= ni + (bi == bj ? 0 : nj)) break;
+		compute_kernel_cells(locs_p, data_p, density_p, weight_p, bias, 1, ni + nj, 
+    		nchannels, ndims, nkernels, ncells, radius, kernel_size_p, dilation_p, 
+    		out_p, 0, n, start, end, ddata_p, dweight_p);
+		i += end - start;
+	}
+
+	// Wait again for everyone to finish before copying back over.
+	__syncthreads();
+
+	// If we're not going backwards, copy out back over.
+	if(!backwards)
+	{
+		for(i = th; i < ni*nkernels; i += blockDim.x)
+			atomicAdd(out + b*N*nkernels + starti*nkernels + i, out_p[i]);
+		for(i = th; i < nj*nkernels; i += blockDim.x)
+			atomicAdd(out + b*N*nkernels + startj*nkernels + i, out_p[i + ni*nkernels]);
+	}
+
+	// Copy ddata back over if it's not null.
+	if(ddata != NULL)
+	{
+		for(i = th; i < ni*nchannels; i += blockDim.x)
+			atomicAdd(ddata + b*N*nchannels + starti*nchannels + i, ddata_p[i]);
+		for(i = th; i < nj*nchannels; i += blockDim.x)
+			atomicAdd(ddata + b*N*nchannels + startj*nchannels + i, 
+				ddata_p[i + ni*nchannels]);
+	}
+
+	// Copy dweight back over if it's not null.
+	if(dweight != NULL)
+	{
+		for(i = th; i < nkernels*nchannels*ncells; i += blockDim.x)
+			atomicAdd(dweight + i, dweight_p[i]);
+	}
 }
 int cuda_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
 	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
 	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
-	float* dweight, cudaStream_t stream)
+	float* dweight, cudaStream_t stream, size_t nshared_device_mem)
 {
-	const int NUM_BLOCKS = 8;
-	int nops = batch_size*N*NUM_BLOCKS;
-    int numBlocks = ceil(nops * (1.0/256));
-    dim3 blocks(numBlocks);
-    dim3 threads(256);
+	size_t fixedmem = 0;
+	fixedmem += nkernels*nchannels*ncells*sizeof(float); // weight
+	fixedmem += ndims*sizeof(float); // kernel_size
+	fixedmem += ndims*sizeof(float); // dilation
+	size_t memperparticle = (ndims + 1)*sizeof(float) + // locs
+							nchannels*sizeof(float) +   // data
+							sizeof(float) +             // density
+							nkernels*sizeof(float);		// out
+    if(ddata != NULL)
+    	memperparticle += nchannels*sizeof(float);
+    if(dweight != NULL)
+    	fixedmem += nkernels*nchannels*ncells*sizeof(float);
 
-	kernel_convsp<<<blocks, threads, 0, stream>>>(locs, data, density, weight, bias,
+    int block_size = (nshared_device_mem - fixedmem)/(2*memperparticle);
+    if(block_size > N) block_size = N;
+    int nblocks = ceil(1.0f*N/block_size);
+    size_t nshared_mem = fixedmem + 2*block_size*memperparticle;
+
+    dim3 blocks(batch_size, nblocks*(nblocks + 1)/2, 1);
+    dim3 threads(min(256, block_size*block_size));
+
+	kernel_convsp<<<blocks, threads, nshared_mem, stream>>>(locs, data, density, weight, bias,
 		batch_size, N, nchannels, ndims, nkernels, ncells, radius, kernel_size, 
-		dilation, out, ddata, dweight, NUM_BLOCKS);
+		dilation, out, ddata, dweight, block_size, nblocks);
 	cudaDeviceSynchronize();
-	// check for errors
-	cudaError_t err = cudaGetLastError();
-	if (err != cudaSuccess) {
-	printf("error in cuda_convsp: %s\n", cudaGetErrorString(err));
-		return 0;
-	}
-	return 1;
+    return PrintOnCudaError("cuda_convsp");
 }
 
 
@@ -210,16 +371,10 @@ int cuda_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
     }
 
     kernel_convsdf<<<blocks, threads, 0, stream>>>(locs, batch_size, N, ndims, idxs, poses,
-        scales, M, pose_len, sdfs, sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, kernel_size, dilation,
-        max_distance, out, dweight);
+        scales, M, pose_len, sdfs, sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, 
+        kernel_size, dilation, max_distance, out, dweight);
     cudaDeviceSynchronize();
-    // check for errors
-    err = cudaGetLastError();
-    if (err != cudaSuccess) {
-	    printf("error in cuda_convsdf: %s\n", cudaGetErrorString(err));
-	        return 0;
-    }
-    return 1;
+    return PrintOnCudaError("cuda_convsdf");
 }
 
 

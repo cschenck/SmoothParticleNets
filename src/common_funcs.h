@@ -189,7 +189,7 @@ Given a particle index in a specific batch, this function loops through the give
 of particle indices, adding their contribution to each of the kernel cells around the
 given particle. Inputs are:
 	-locs: (batch_size X N X ndimss+1) the cartesian coordinates of all the particles.
-	-data: (batch_size X nchannels X N) the features associated with each particle.
+	-data: (batch_size X N X nchannels) the features associated with each particle.
 	-density: (batch_size X N) the density at each particle.
 	-weight: (nkernels X nchannels X ncells) the kernel weights.
 	-bias: (nkernels) the kernel biases.
@@ -203,13 +203,13 @@ given particle. Inputs are:
 	-radius: the radius to use when doing neighbordhood lookups around a query point.
 	-kernel_size: (ndims) the number of kernel cells in each dimension.
 	-dilation: (ndims) the size of a signal kernel cell in each dimension.
-	-out: (batch_size X nkernels X N) the partially computed output values for
+	-out: (batch_size X N X nkernels) the partially computed output values for
 		  each particle.
 	-b: the batch index of the given particle.
 	-n: the particle index of the given particle.
 	-start: the particle index to start at when computing neighborhood lookups (inclusive).
 	-end: the particle index to end at when computing neighborhood lookups (exclusive).
-	-ddata: [Optional] (batch_size X nchannels X N) if not NULL, then this function will
+	-ddata: [Optional] (batch_size X N X nchannels) if not NULL, then this function will
 			compute the derivative. This assumes that out is filled with the derivative
 			of the output of this layer wrt some loss, and that this is initially
 			filled with all 0s. The derivative wrt the data is stored here.
@@ -227,9 +227,9 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 	int idxs[MAX_CARTESIAN_DIM];
 	float* r = locs + (b*N + n)*(ndims + 1);
 	int backward = ((ddata != NULL) || (dweight != NULL));
-	float* out_ptrn = out + b*nkernels*N + n;
-	float* data_ptrn = data + b*nchannels*N + n;
-	float* ddata_ptrn = ddata + b*nchannels*N + n;
+	float* out_ptrn = out + b*nkernels*N + n*nkernels;
+	float* data_ptrn = data + b*nchannels*N + n*nchannels;
+	float* ddata_ptrn = ddata + b*nchannels*N + n*nchannels;
 	float voln = 1.0f/(r[ndims]*density[b*N + n]);
 
 	if(start < n)
@@ -266,9 +266,9 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 				d = sqrtf(d);
 				int outk, ink;
 				float volj = 1.0f/(r2[ndims]*density[b*N + j]);
-				float* out_ptrj = out + b*nkernels*N + j;
-				float* data_ptrj = data + b*nchannels*N + j;
-				float* ddata_ptrj = ddata + b*nchannels*N + j;
+				float* out_ptrj = out + b*nkernels*N + j*nkernels;
+				float* data_ptrj = data + b*nchannels*N + j*nchannels;
+				float* ddata_ptrj = ddata + b*nchannels*N + j*nchannels;
 				float kw = kernel_w(d, radius);
 				for(outk = 0; outk < nkernels; ++outk)
 				{
@@ -282,7 +282,8 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 						//   outk*N +
 						//   n 
 						// data + b*nchannels*N + ink*N + j
-						float weightnj = weight[outk*nchannels*ncells + ink*ncells + kernel_idx];
+						float weightnj = weight[outk*nchannels*ncells + ink*ncells + 
+												kernel_idx];
 						float weightjn = weight[outk*nchannels*ncells + ink*ncells + 
 													(ncells - kernel_idx - 1)];
 						
@@ -290,29 +291,30 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 						{
 							if(ddata != NULL)
 							{
-								atomicAdd(ddata_ptrj + ink*N, 
-									(*(out_ptrn + outk*N))*weightnj*volj*kw);
+								atomicAdd(ddata_ptrj + ink, 
+									(*(out_ptrn + outk))*weightnj*volj*kw);
 								if(j != n)
-									atomicAdd(ddata_ptrn + ink*N, 
-										(*(out_ptrj + outk*N))*weightjn*voln*kw);
+									atomicAdd(ddata_ptrn + ink, 
+										(*(out_ptrj + outk))*weightjn*voln*kw);
 							}
 							if(dweight != NULL)
 							{
-								atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + kernel_idx, 
-									(*(out_ptrn + outk*N))*volj*(*(data_ptrj + ink*N))*kw);
+								atomicAdd(dweight + outk*nchannels*ncells + 
+										  ink*ncells + kernel_idx, 
+									(*(out_ptrn + outk))*volj*(*(data_ptrj + ink))*kw);
 								if(j != n)
 									atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + 
 											  (ncells - kernel_idx - 1), 
-										(*(out_ptrj + outk*N))*voln*(*(data_ptrn + ink*N))*kw);
+										(*(out_ptrj + outk))*voln*(*(data_ptrn + ink))*kw);
 							}
 						}
 						else
 						{
-							float f1 = weightnj*volj*(*(data_ptrj + ink*N))*kw;
-							float g1 = weightjn*voln*(*(data_ptrn + ink*N))*kw;
-							atomicAdd(out_ptrn + outk*N, f1);
+							float f1 = weightnj*volj*(*(data_ptrj + ink))*kw;
+							float g1 = weightjn*voln*(*(data_ptrn + ink))*kw;
+							atomicAdd(out_ptrn + outk, f1);
 							if(j != n)
-								atomicAdd(out_ptrj + outk*N, g1);
+								atomicAdd(out_ptrj + outk, g1);
 						}
 					}
 				}
@@ -368,7 +370,7 @@ stores them in out at that location's and kernel's index. The inputs are:
 	-kernel_size: (ndims) the number of kernel cells in each dimension.
 	-dilation: (ndims) the size of a signal kernel cell in each dimension.
 	-max_distance: a cap on the maximum SDF value. It will be min(max_distance, SDF(r)).
-	-out: (batch_size X nkernels X N) the partially computed output values for
+	-out: (batch_size X N X nkernels) the partially computed output values for
 		  each query location.
 	-b: the batch index of the given query location.
 	-n: the particle index of the given query location.
@@ -454,7 +456,7 @@ void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, flo
 
 	// Okay, we've thrown out all the SDFs that are too far from the kernel to
 	// make a difference, now iterate over the remainder and convolve the kernel.
-	float* out_ptr = out + b*nkernels*N + outk*N + n;
+	float* out_ptr = out + b*nkernels*N + n*nkernels + outk;
 	if(!backward)
 		*out_ptr = 0;
 	int kidxs[MAX_CARTESIAN_DIM];

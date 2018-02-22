@@ -22,7 +22,7 @@ def w(x, h=1):
 
 def test_convsp():
     print("Testing CPU implementation of ConvSP...")
-    # eval_convsp(cuda=False)
+    eval_convsp(cuda=False)
     print("CPU implementation passed!")
     print("")
 
@@ -48,7 +48,7 @@ def eval_convsp(cuda=False):
 
     locs = np.random.rand(BATCH_SIZE, N, NDIM + 1)
     locs[..., -1] = 1.0/MASS
-    data = np.random.rand(BATCH_SIZE, NCHANNELS, N)
+    data = np.random.rand(BATCH_SIZE, N, NCHANNELS)
     density = np.zeros((BATCH_SIZE, N), dtype=np.float32)
     for b in range(BATCH_SIZE):
         for i in range(N):
@@ -61,7 +61,7 @@ def eval_convsp(cuda=False):
     biases = np.random.rand(NKERNELS)
 
     kernel_centers = (np.array(KERNEL_SIZE) - 1)/2
-    ground_truth = np.zeros((BATCH_SIZE, NKERNELS, N), dtype=np.float32)
+    ground_truth = np.zeros((BATCH_SIZE, N, NKERNELS), dtype=np.float32)
     for b in range(BATCH_SIZE):
         for i in range(N):
             for j in range(N):
@@ -74,10 +74,10 @@ def eval_convsp(cuda=False):
                         - locs[b, j, :NDIM]).sum()
                     if d > RADIUS*RADIUS:
                         continue
-                    ground_truth[b, :, i] += weights[:, :, k].dot(
+                    ground_truth[b, i, :] += weights[:, :, k].dot(
                         1.0/(locs[b, j, NDIM]*density[b, j])
-                        *w(np.sqrt(d), h=RADIUS)*data[b, :, j])
-    ground_truth += biases[np.newaxis, :, np.newaxis]
+                        *w(np.sqrt(d), h=RADIUS)*data[b, j, :])
+    ground_truth += biases[np.newaxis, np.newaxis, :]
 
     def use_cuda(x):
         if cuda:
@@ -100,9 +100,35 @@ def eval_convsp(cuda=False):
     convsp.weight = weights
     convsp.bias = biases
     convsp = use_cuda(convsp)
+    if cuda:
+        # Set convsp's amount of shared memory low enough so that the convsp cuda
+        # implementation has to split the particles into blocks.
+        convsp.device_id = torch.cuda.current_device()
+        nshared_device_mem = spn._ext.spnc_get_shared_mem_size(convsp.device_id)
+        f32 = np.dtype('float32').itemsize
+        fixedmem = (NKERNELS*NCHANNELS*np.prod(KERNEL_SIZE)*f32)
+        fixedmem += NDIM*f32
+        fixedmem += NDIM*f32
+        memperparticle = (NDIM + 1)*f32
+        memperparticle += NCHANNELS*f32
+        memperparticle += f32
+        memperparticle += NKERNELS*f32
+        block_size = N//3
+        convsp.nshared_device_mem = min(nshared_device_mem, 
+            fixedmem + block_size*memperparticle*2)
+
 
     pred = undo_cuda(convsp(locs, data, density))
-    # np.testing.assert_array_almost_equal(pred.data.numpy(), ground_truth, decimal=3)
+    np.testing.assert_array_almost_equal(pred.data.numpy(), ground_truth, decimal=3)
+
+    if cuda:
+        # Add more device memory for doing backwards passes.
+        fixedmem += (NKERNELS*NCHANNELS*np.prod(KERNEL_SIZE)*f32)
+        memperparticle += NCHANNELS*f32
+        block_size = N//3
+        convsp.nshared_device_mem = min(nshared_device_mem, 
+            fixedmem + block_size*memperparticle*2)
+
 
     def func(d, w, b):
         convsp.weight = w

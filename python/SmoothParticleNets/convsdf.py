@@ -97,7 +97,7 @@ class ConvSDF(torch.nn.Module):
                     All other values for D are not supported.
             -scales: A BxM tensor with the scale
 
-        Returns: A BxOxN tensor where O is the number of output features.
+        Returns: A BxNxO tensor where O is the number of output features.
         """
 
         # Error checking.
@@ -139,7 +139,7 @@ class _ConvSDFFunction(torch.autograd.Function):
         batch_size = locs.size()[0]
         N = locs.size()[1]
         nkernels = weight.size()[0]
-        ret = self.sdfs.new(batch_size, nkernels, N)
+        ret = self.sdfs.new(batch_size, N, nkernels)
         ret.fill_(0)
         if locs.is_cuda:
             if not _ext.spnc_convsdf_forward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
@@ -175,7 +175,7 @@ class _ConvSDFFunction(torch.autograd.Function):
                 grad_output.new(poses.size()).fill_(0), 
                 grad_output.new(scales.size()).fill_(0), 
                 ret_weight,
-                grad_output.sum(2).sum(0))
+                grad_output.sum(1).sum(0))
 
 
 

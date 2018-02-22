@@ -88,7 +88,7 @@ def eval_convsdf(cuda=False):
     biases = np.random.rand(NKERNELS)
 
     kernel_centers = (np.array(KERNEL_SIZE) - 1)/2
-    ground_truth = np.zeros((BATCH_SIZE, NKERNELS, N), dtype=np.float32)
+    ground_truth = np.zeros((BATCH_SIZE, N, NKERNELS), dtype=np.float32)
 
     sdf_widths = np.array([[4, 4, 4],
                            [6, 4, 8],
@@ -133,8 +133,8 @@ def eval_convsdf(cuda=False):
                         r2 /= scales[b, m]
                         v = sdf_fns[mm](r2)*scales[b, m]
                         minv = min(v, minv)
-                    ground_truth[b, outk, i] += weights[outk, k]*minv
-    ground_truth += biases[np.newaxis, :, np.newaxis]
+                    ground_truth[b, i, outk] += weights[outk, k]*minv
+    ground_truth += biases[np.newaxis, np.newaxis, :]
 
     def use_cuda(x):
         if cuda:
@@ -173,7 +173,7 @@ def eval_convsdf(cuda=False):
         convsdf.weight = w
         convsdf.bias = b
         return (convsdf(locs_t, idxs_t, poses_t, scales_t),)
-    assert torch.autograd.gradcheck(func, (weights_t, biases_t), eps=1e-2, atol=1e-3)
+    assert gradcheck(func, (weights_t, biases_t), eps=1e-2, atol=1e-3)
     
     
 def quaternionMult(q1, q2):

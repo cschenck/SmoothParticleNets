@@ -34,7 +34,7 @@ int spn_convsp_forward(THFloatTensor* locs_t, THFloatTensor* data_t, THFloatTens
     float* bias = THFloatTensor_data(bias_t); 
     int batch_size = locs_t->size[0];
     int N = locs_t->size[1];
-    int nchannels = data_t->size[1];
+    int nchannels = data_t->size[2];
     int ndims = locs_t->size[2] - 1;
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
@@ -61,7 +61,7 @@ int spn_convsp_backward(THFloatTensor* locs_t, THFloatTensor* data_t, THFloatTen
     float* dweight = THFloatTensor_data(dweight_t);
     int batch_size = locs_t->size[0];
     int N = locs_t->size[1];
-    int nchannels = data_t->size[1];
+    int nchannels = data_t->size[2];
     int ndims = locs_t->size[2] - 1;
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
@@ -172,10 +172,12 @@ int cpu_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
         for(n = 0; n < N; ++n)
         {
             for(outk = 0; outk < nkernels; ++outk)
+            {
                 compute_sdf_kernel_cells(locs, batch_size, N, ndims, idxs, poses, 
                     scales, M, pose_len, sdfs, sdf_offsets, sdf_shapes, weight, bias, 
                     nkernels, ncells, kernel_size, dilation, max_distance, out, b, n,
                     outk, dweight, isdf_cache, fsdf_cache);
+            }
         }
     }
     free(isdf_cache);
