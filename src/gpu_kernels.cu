@@ -147,14 +147,20 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 	int nj = endj - startj;
 	int th = threadIdx.x;
 	int backwards = (ddata != NULL || dweight != NULL);
+	int nweight_blocks = gridDim.z;
+	int weight_block_size = ceilf(1.0f*nkernels/nweight_blocks);
+	int bw = blockIdx.z;
+	int startw = bw*weight_block_size;
+	int endw = fminf(nkernels, (bw + 1)*weight_block_size);
+	int nw = endw - startw;
 
 	// Next copy over the weight.
 	float* ptr = shared_ptr;
-	int i;
-	for(i = th; i < nkernels*nchannels*ncells; i += blockDim.x)
-		ptr[i] = weight[i];
+	int i, j;
+	for(i = th; i < nw*nchannels*ncells; i += blockDim.x)
+		ptr[i] = weight[i + startw*nchannels*ncells];
 	float* weight_p = ptr;
-	ptr += nkernels*nchannels*ncells;
+	ptr += nw*nchannels*ncells;
 
 	// Copy over the kernel_size and dilation.
 	for(i = th; i < ndims; i += blockDim.x)
@@ -171,10 +177,10 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 	float* dweight_p = NULL;
 	if(dweight != NULL)
 	{
-		for(i = th; i < nkernels*nchannels*ncells; i += blockDim.x)
+		for(i = th; i < nw*nchannels*ncells; i += blockDim.x)
 			ptr[i] = 0.0f;
 		dweight_p = ptr;
-		ptr += nkernels*nchannels*ncells;
+		ptr += nw*nchannels*ncells;
 	}
 
 	// Next we're going to copy over particle data. Since we're computing for 2 blocks,
@@ -208,12 +214,20 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 
 	// Copy over out.
 	float* out_p = ptr;
-	for(i = th; i < ni*nkernels; i += blockDim.x)
-		ptr[i] = (backwards ? out[b*N*nkernels + starti*nkernels + i] : 0.0f);
-	ptr += ni*nkernels;
-	for(i = th; i < nj*nkernels; i += blockDim.x)
-		ptr[i] = (backwards ? out[b*N*nkernels + startj*nkernels + i] : 0.0f);
-	ptr += nj*nkernels;
+	for(i = th; i < ni; i += blockDim.x)
+	{
+		for(j = 0; j < nw; ++j)
+			ptr[i*nw + j] = (backwards ? 
+				out[b*N*nkernels + (starti + i)*nkernels + (startw + j)] : 0.0f);
+	}
+	ptr += ni*nw;
+	for(i = th; i < nj; i += blockDim.x)
+	{
+		for(j = 0; j < nw; ++j)
+			ptr[i*nw + j] = (backwards ? 
+				out[b*N*nkernels + (startj + i)*nkernels + (startw + j)] : 0.0f);
+	}
+	ptr += nj*nw;
 
 	// Alocate space for ddata only if we're going backwards. Only copy
 	// ddata over after.
@@ -241,7 +255,7 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 		int end = fminf(nj, (i % nj) + (th + 1)*nops - i) + (bi == bj ? 0 : ni);
 		if(start >= ni + (bi == bj ? 0 : nj)) break;
 		compute_kernel_cells(locs_p, data_p, density_p, weight_p, bias, 1, ni + nj, 
-    		nchannels, ndims, nkernels, ncells, radius, kernel_size_p, dilation_p, 
+    		nchannels, ndims, nw, ncells, radius, kernel_size_p, dilation_p, 
     		out_p, 0, n, start, end, ddata_p, dweight_p);
 		i += end - start;
 	}
@@ -252,10 +266,18 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 	// If we're not going backwards, copy out back over.
 	if(!backwards)
 	{
-		for(i = th; i < ni*nkernels; i += blockDim.x)
-			atomicAdd(out + b*N*nkernels + starti*nkernels + i, out_p[i]);
-		for(i = th; i < nj*nkernels; i += blockDim.x)
-			atomicAdd(out + b*N*nkernels + startj*nkernels + i, out_p[i + ni*nkernels]);
+		for(i = th; i < ni; i += blockDim.x)
+		{
+			for(j = 0; j < nw; ++j)
+				atomicAdd(out + b*N*nkernels + (starti + i)*nkernels + (startw + j),
+					out_p[i*nw + j]);
+		}
+		for(i = th; i < nj; i += blockDim.x)
+		{
+			for(j = 0; j < nw; ++j)
+				atomicAdd(out + b*N*nkernels + (startj + i)*nkernels + (startw + j),
+					out_p[i*nw + j + ni*nw]);
+		}
 	}
 
 	// Copy ddata back over if it's not null.
@@ -271,8 +293,8 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 	// Copy dweight back over if it's not null.
 	if(dweight != NULL)
 	{
-		for(i = th; i < nkernels*nchannels*ncells; i += blockDim.x)
-			atomicAdd(dweight + i, dweight_p[i]);
+		for(i = th; i < nw*nchannels*ncells; i += blockDim.x)
+			atomicAdd(dweight + startw*nchannels*ncells + i, dweight_p[i]);
 	}
 }
 int cuda_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
@@ -281,24 +303,40 @@ int cuda_convsp(float* locs, float* data, float* density, float* weight, float* 
 	float* dweight, cudaStream_t stream, size_t nshared_device_mem)
 {
 	size_t fixedmem = 0;
-	fixedmem += nkernels*nchannels*ncells*sizeof(float); // weight
-	fixedmem += ndims*sizeof(float); // kernel_size
-	fixedmem += ndims*sizeof(float); // dilation
+	int nweight_blocks;
+	int nw;
+	for(nweight_blocks = 1; nweight_blocks <= nkernels; ++nweight_blocks)
+	{
+		nw = ceilf(1.0f*nkernels/nweight_blocks);
+		fixedmem = 0;
+		fixedmem += nw*nchannels*ncells*sizeof(float); // weight
+		fixedmem += ndims*sizeof(float); // kernel_size
+		fixedmem += ndims*sizeof(float); // dilation
+		if(dweight != NULL)
+    		fixedmem += nw*nchannels*ncells*sizeof(float);
+    	if(fixedmem <= nshared_device_mem/2)
+    		break;
+	}
+	if(nweight_blocks > nkernels)
+	{
+		printf("error in cuda_convsp: Unable to fit weights in less than half of "
+			"shared memory!\n");
+		return 0;
+	}
 	size_t memperparticle = (ndims + 1)*sizeof(float) + // locs
 							nchannels*sizeof(float) +   // data
 							sizeof(float) +             // density
-							nkernels*sizeof(float);		// out
+							nw*sizeof(float);           // out
     if(ddata != NULL)
     	memperparticle += nchannels*sizeof(float);
-    if(dweight != NULL)
-    	fixedmem += nkernels*nchannels*ncells*sizeof(float);
+    
 
     int block_size = (nshared_device_mem - fixedmem)/(2*memperparticle);
     if(block_size > N) block_size = N;
     int nblocks = ceil(1.0f*N/block_size);
     size_t nshared_mem = fixedmem + 2*block_size*memperparticle;
 
-    dim3 blocks(batch_size, nblocks*(nblocks + 1)/2, 1);
+    dim3 blocks(batch_size, nblocks*(nblocks + 1)/2, nweight_blocks);
     dim3 threads(min(256, block_size*block_size));
 
 	kernel_convsp<<<blocks, threads, nshared_mem, stream>>>(locs, data, density, weight, bias,

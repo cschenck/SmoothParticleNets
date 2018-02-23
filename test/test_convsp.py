@@ -20,18 +20,20 @@ except ImportError:
 def w(x, h=1):
     return 1.0/np.pi*(0.25*max(0, h - x)**3 - max(0, h/2.0 - x)**3)/(h**3/(8*np.pi))
 
-def test_convsp():
-    print("Testing CPU implementation of ConvSP...")
-    eval_convsp(cuda=False)
-    print("CPU implementation passed!")
-    print("")
+def test_convsp(cpu=True, cuda=True):
+    if cpu:
+        print("Testing CPU implementation of ConvSP...")
+        eval_convsp(cuda=False)
+        print("CPU implementation passed!")
+        print("")
 
-    if pytest_args.with_cuda:
-        print("Testing CUDA implementation of ConvSP...")
-        eval_convsp(cuda=True)
-        print("CUDA implementation passed!")
-    else:
-        print("Not compiled with CUDA, skipping CUDA test.")
+    if cuda:
+        if pytest_args.with_cuda:
+            print("Testing CUDA implementation of ConvSP...")
+            eval_convsp(cuda=True)
+            print("CUDA implementation passed!")
+        else:
+            print("Not compiled with CUDA, skipping CUDA test.")
 
 def eval_convsp(cuda=False):
     BATCH_SIZE = 2
@@ -103,8 +105,8 @@ def eval_convsp(cuda=False):
     if cuda:
         # Set convsp's amount of shared memory low enough so that the convsp cuda
         # implementation has to split the particles into blocks.
-        convsp.device_id = torch.cuda.current_device()
-        nshared_device_mem = spn._ext.spnc_get_shared_mem_size(convsp.device_id)
+        device_id = torch.cuda.current_device()
+        nshared_device_mem = spn._ext.spnc_get_shared_mem_size(device_id)
         f32 = np.dtype('float32').itemsize
         fixedmem = (NKERNELS*NCHANNELS*np.prod(KERNEL_SIZE)*f32)
         fixedmem += NDIM*f32
@@ -114,6 +116,7 @@ def eval_convsp(cuda=False):
         memperparticle += f32
         memperparticle += NKERNELS*f32
         block_size = N//3
+        convsp.device_id = device_id
         convsp.nshared_device_mem = min(nshared_device_mem, 
             fixedmem + block_size*memperparticle*2)
 
@@ -139,4 +142,11 @@ def eval_convsp(cuda=False):
 
 
 if __name__ == '__main__':
-    test_convsp()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cpu', dest='cpu', action="store_true", default=True)
+    parser.add_argument('--no-cpu', dest='cpu', action="store_false")
+    parser.add_argument('--cuda', dest='cuda', action="store_true", default=True)
+    parser.add_argument('--no-cuda', dest='cuda', action="store_false")
+    args = parser.parse_args()
+    test_convsp(cpu=args.cpu, cuda=args.cuda)
