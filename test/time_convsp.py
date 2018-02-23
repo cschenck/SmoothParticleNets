@@ -32,6 +32,9 @@ args = parser.parse_args()
 
 print("Loading dataset...")
 dataset = pickle.load(open(args.datapath, "rb"))
+# Swap channel and particle dimensions in data.
+for d in dataset:
+	d['data'] = d['data'].transpose(1, 2)
 
 results = np.zeros((len(KERNEL_SIZES), len(CHANNEL_SIZES)), dtype=np.float)
 for j, channels in enumerate(CHANNEL_SIZES):
@@ -39,7 +42,7 @@ for j, channels in enumerate(CHANNEL_SIZES):
 	for d in dataset:
 		dd = d['data'].numpy()
 		s = list(dd.shape)
-		s[1] = channels
+		s[2] = channels
 		d['data'] = torch.from_numpy(np.resize(dd, s))
 	for i, kernel_size in enumerate(KERNEL_SIZES):
 		print("\tRunning tests for kernel size %s..." % str(kernel_size))
