@@ -21,8 +21,8 @@ KERNEL_SIZES = [
 ]
 
 CHANNEL_SIZES = range(1, 33)
-RADIUS = 0.04
-DILATION = 0.01
+RADIUS = 0.1
+DILATION = 0.05
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--datapath', required=True, action="store", type=str)
