@@ -87,7 +87,7 @@ def gen_data(N=10):
 						 [1, 1, 1],
 						 [0.5, 0.5, 0.5],
 						])
-	truedata = np.round(np.random.rand(1, truelocs.shape[0]))
+	truedata = np.round(np.random.rand(truelocs.shape[0], 1))
 
 	locs = np.random.rand(N, 4).astype(np.float32)
 	locs[:, -1] = 1.0/MASS
@@ -96,10 +96,10 @@ def gen_data(N=10):
 	for i, r1 in enumerate(truelocs):
 		for r2 in truelocs:
 			density[i] += MASS*w(r1 - r2, h=RADIUS)
-	data = np.zeros((1, N), dtype=np.float32)
+	data = np.zeros((N, 1), dtype=np.float32)
 	for i, r1 in enumerate(locs[:, :-1]):
 		for j, r2 in enumerate(truelocs):
-			data[:, i] += MASS/density[j]*truedata[:, j]*w(r1 - r2, h=RADIUS)
+			data[i, :] += MASS/density[j]*truedata[j, :]*w(r1 - r2, h=RADIUS)
 
 	# Density for data, not true data
 	density = np.zeros((N,), dtype=np.float32)
@@ -107,10 +107,10 @@ def gen_data(N=10):
 		for r2 in locs[:, :-1]:
 			density[i] += MASS*w(r1 - r2, h=RADIUS)
 	# vel = data
-	vel = np.zeros((3, data.shape[-1]), dtype=data.dtype)
+	vel = np.zeros((data.shape[0], 3), dtype=data.dtype)
 	for i, r1 in enumerate(locs[:, :-1]):
 	    for j, r2 in enumerate(locs[:, :-1]):
-	        vel[:, i] += MASS/density[j]*dw(r1 - r2, h=RADIUS)*data[:, j]
+	        vel[i, :] += MASS/density[j]*dw(r1 - r2, h=RADIUS)*data[j, :]
 	return locs, data, density, vel
 
 
@@ -179,17 +179,17 @@ def viz(tblogger, iteration, loss, net, criterion, test_set):
 	for idx in range(2):
 		locs = test_set[0].data.cpu().numpy()[idx, ..., :3]
 		if pred.data.size()[1] > 1:
-			gt = test_set[-1].data.cpu().numpy()[idx, ...].transpose()
-			p = pred.data.cpu().numpy()[idx, ...].transpose()
+			gt = test_set[-1].data.cpu().numpy()[idx, ...]
+			p = pred.data.cpu().numpy()[idx, ...]
 			tblogger.vecdiff_summary(str(idx) + "-Test Particles", iteration, locs,
 				gt, p, axlimits=[(0, 1), (0, 1), (0, 1)], scale=0.5)
 			tblogger.scatter3d_summary(str(idx) + "-Test Particles Input", iteration, locs, 
-				data=test_set[1].data.cpu().numpy()[idx, ...].transpose(), 
+				data=test_set[1].data.cpu().numpy()[idx, ...], 
 				axlimits=[(0, 1), (0, 1), (0, 1)], titles=["Input",])
 		else:
 			data = np.concatenate((test_set[1].data.cpu().numpy()[idx, ...], 
 				test_set[-1].data.cpu().numpy()[idx, ...], 
-				pred.data.cpu().numpy()[idx, ...]), axis=0).transpose()
+				pred.data.cpu().numpy()[idx, ...]), axis=0)
 			tblogger.scatter3d_summary(str(idx) + "-Test Particles", iteration, locs, data=data, 
 				axlimits=[(0, 1), (0, 1), (0, 1)], titles=["Input", "Ground Truth", "Predictions"])
 
@@ -202,7 +202,7 @@ def main():
 	grid_dims = np.array((50, 50, 50))
 	
 	test_set = numpybatch2torchbatch(zip(*[gen_data() for _ in range(32)]), requires_grad=False)
-	net = SimpleSmoothParticleNet(test_set[1].data.size()[1], test_set[-1].data.size()[1],
+	net = SimpleSmoothParticleNet(test_set[1].data.size()[2], test_set[-1].data.size()[2],
 		RADIUS, test_set[0].data.size()[-1]-1, 0.05).cuda()
 	[p.data.normal_(0, 1) for p in net.parameters()]
 
