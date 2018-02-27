@@ -18,7 +18,8 @@ class ConvSP(torch.nn.Module):
     with the particles and kernel cell center r, a weighted average for f is taken at r
     based on the distance to nearby
     """
-    def __init__(self, in_channels, out_channels, ndim, kernel_size, dilation, radius):
+    def __init__(self, in_channels, out_channels, ndim, kernel_size, dilation, radius,
+                    with_params=True):
         """ Initialize a Smooth Particle Convolution layer.
 
         Arguments:
@@ -30,6 +31,9 @@ class ConvSP(torch.nn.Module):
                           must be odd.
             -dilation: (float or tuple) The spacing between each cell of the kernel.
             -radius: The radius to use when computing the neighbors for each query point.
+            -with_params: If true, the parameters weight and bias are registered with
+                          PyTorch as parameters. Otherwise they are registered as buffers,
+                          meaning they won't be optimized when doing backprop.
         """
         super(ConvSP, self).__init__()
         self.nchannels = ec.check_conditions(in_channels, "in_channels", 
@@ -50,9 +54,15 @@ class ConvSP(torch.nn.Module):
             "%s >= 0", "isinstance(%s, numbers.Real)")
 
         self.ncells = np.prod(self._kernel_size)
-        self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(self.nkernels, 
-            self.nchannels, self.ncells)))
-        self.register_parameter("bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
+
+        if with_params:
+            self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(self.nkernels, 
+                self.nchannels, self.ncells)))
+            self.register_parameter("bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
+        else:
+            self.register_buffer("weight", torch.autograd.Variable(torch.Tensor(self.nkernels, 
+                self.nchannels, self.ncells)))
+            self.register_buffer("bias", torch.autograd.Variable(torch.Tensor(self.nkernels)))
 
         self.register_buffer("kernel_size", ec.list2tensor(self._kernel_size))
         self.register_buffer("dilation", ec.list2tensor(self._dilation))
