@@ -13,7 +13,7 @@ class ConvSDF(torch.nn.Module):
     """ TODO
     """
     def __init__(self, sdfs, sdf_sizes, out_channels, ndim, kernel_size, dilation, 
-                    max_distance):
+                    max_distance, with_params=True):
         """ Initialize a SDF Convolution layer.
 
         Arguments:
@@ -28,6 +28,9 @@ class ConvSDF(torch.nn.Module):
             -dilation: (float or tuple) The spacing between each cell of the kernel.
             -max_distance: A cap on the maximum SDF value, i.e., the SDF value at any 
                            point p is min(min_i SDF_i(p), max_distance).
+            -with_params: If true, the parameters weight and bias are registered with
+                          PyTorch as parameters. Otherwise they are registered as buffers,
+                          meaning they won't be optimized when doing backprop.
         """
         super(ConvSDF, self).__init__()
         self.nkernels = ec.check_conditions(out_channels, "out_channels",
@@ -57,10 +60,15 @@ class ConvSDF(torch.nn.Module):
         self._sdfs = torch.cat(self._sdfs)
 
         self.ncells = np.prod(self._kernel_size)
-        # self.weight = torch.nn.Parameter(torch.Tensor(self.nkernels, self.ncells))
-        # self.bias = torch.nn.Parameter(torch.Tensor(self.nkernels))
-        self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(self.nkernels, self.ncells)))
-        self.register_parameter("bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
+        if with_params:
+            self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(
+                self.nkernels, self.ncells)))
+            self.register_parameter("bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
+        else:
+            self.register_buffer("weight", torch.autograd.Variable(
+                torch.Tensor(self.nkernels, self.ncells)))
+            self.register_buffer("bias", torch.autograd.Variable(
+                torch.Tensor(self.nkernels)))
 
         self._kernel_size = ec.list2tensor(self._kernel_size)
         self._dilation = ec.list2tensor(self._dilation)
