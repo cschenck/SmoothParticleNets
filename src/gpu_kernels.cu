@@ -128,8 +128,8 @@ size_t GetSharedMemPerBlock(int device)
 __global__
 void kernel_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
 	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
-	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
-	float* dweight, int block_size, int num_blocks)
+	float radius, float* kernel_size, float* dilation, int kernel_fn, float* out, 
+	float* ddata, float* dweight, int block_size, int num_blocks)
 {
 	extern __shared__ float shared_ptr[];
 
@@ -256,7 +256,7 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 		if(start >= ni + (bi == bj ? 0 : nj)) break;
 		compute_kernel_cells(locs_p, data_p, density_p, weight_p, bias, 1, ni + nj, 
     		nchannels, ndims, nw, ncells, radius, kernel_size_p, dilation_p, 
-    		out_p, 0, n, start, end, ddata_p, dweight_p);
+    		kernel_fn, out_p, 0, n, start, end, ddata_p, dweight_p);
 		i += end - start;
 	}
 
@@ -299,8 +299,8 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 }
 int cuda_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
 	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
-	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
-	float* dweight, cudaStream_t stream, size_t nshared_device_mem)
+	float radius, float* kernel_size, float* dilation, int kernel_fn, float* out, 
+	float* ddata, float* dweight, cudaStream_t stream, size_t nshared_device_mem)
 {
 	size_t fixedmem = 0;
 	int nweight_blocks;
@@ -341,7 +341,7 @@ int cuda_convsp(float* locs, float* data, float* density, float* weight, float* 
 
 	kernel_convsp<<<blocks, threads, nshared_mem, stream>>>(locs, data, density, weight, bias,
 		batch_size, N, nchannels, ndims, nkernels, ncells, radius, kernel_size, 
-		dilation, out, ddata, dweight, block_size, nblocks);
+		dilation, kernel_fn, out, ddata, dweight, block_size, nblocks);
 	cudaDeviceSynchronize();
     return PrintOnCudaError("cuda_convsp");
 }
@@ -419,3 +419,4 @@ int cuda_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
 #ifdef __cplusplus
 }
 #endif
+

@@ -6,8 +6,8 @@ extern "C" {
 
 int cuda_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
 	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
-	float radius, float* kernel_size, float* dilation, float* out, float* ddata,
-	float* dweight, cudaStream_t stream, size_t nshared_device_mem);
+	float radius, float* kernel_size, float* dilation, int kernel_fn, float* out, 
+	float* ddata, float* dweight, cudaStream_t stream, size_t nshared_device_mem);
 
 int cuda_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
     float* poses, float* scales, int M, int pose_len, float* sdfs, float* sdf_offsets, 

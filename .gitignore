@@ -8,3 +8,4 @@ python/SmoothParticleNets/_ext/__ext.so
 test/.cache/
 test/pytest_args.py
 ._timings_n2_shared.csv
+src/kernel_constants.h

@@ -16,6 +16,7 @@ extern "C" {
 #include <stdio.h>
 
 #include "constants.h"
+#include "kernel_constants.h"
 
 #ifndef CUDA
 void atomicAdd(float* ptr, float value)
@@ -29,10 +30,15 @@ typedef struct
 #endif
 
 DEVICE_FUNC
-float kernel_w(float d, float radius)
+float kernel_w(float d, float H, int fn)
 {
-	return 8.0f/powf(radius, 3)*(0.25f*powf(fmaxf(0.0f, radius - d), 3) - 
-		powf(fmaxf(0.0f, radius/2.0f - d), 3));
+	if(d > H) return 0.0f;
+	if(!VALIDATE_KERNEL_ID(fn))
+	{
+		printf("ERROR: Unknown kernel function for id %d. Returning -1.\n", fn);
+		return -1;
+	}
+	return KERNEL_W(d, H, fn);
 }
 
 
@@ -203,6 +209,7 @@ given particle. Inputs are:
 	-radius: the radius to use when doing neighbordhood lookups around a query point.
 	-kernel_size: (ndims) the number of kernel cells in each dimension.
 	-dilation: (ndims) the size of a signal kernel cell in each dimension.
+	-kernel_fn: the id of the kernel function to use for W in the SPH equation.
 	-out: (batch_size X N X nkernels) the partially computed output values for
 		  each particle.
 	-b: the batch index of the given particle.
@@ -221,8 +228,8 @@ given particle. Inputs are:
 DEVICE_FUNC
 void compute_kernel_cells(float* locs, float* data, float* density, float* weight, 
 	float* bias, int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells,
-	float radius, float* kernel_size, float* dilation, float* out, int b, int n, int start, 
-	int end, float* ddata, float* dweight)
+	float radius, float* kernel_size, float* dilation, int kernel_fn, float* out, int b, 
+	int n, int start, int end, float* ddata, float* dweight)
 {
 	int idxs[MAX_CARTESIAN_DIM];
 	float* r = locs + (b*N + n)*(ndims + 1);
@@ -269,7 +276,7 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 				float* out_ptrj = out + b*nkernels*N + j*nkernels;
 				float* data_ptrj = data + b*nchannels*N + j*nchannels;
 				float* ddata_ptrj = ddata + b*nchannels*N + j*nchannels;
-				float kw = kernel_w(d, radius);
+				float kw = kernel_w(d, radius, 9);
 				for(outk = 0; outk < nkernels; ++outk)
 				{
 					for(ink = 0; ink < nchannels; ++ink)
