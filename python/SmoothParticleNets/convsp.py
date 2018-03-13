@@ -105,6 +105,10 @@ class ConvSP(torch.nn.Module):
         ec.check_tensor_dims(data, "data", (batch_size, N, self.nchannels))
         ec.check_tensor_dims(density, "density", (batch_size, N))
 
+        locs = locs.contiguous()
+        data = data.contiguous()
+        density = density.contiguous()
+
         if locs.is_cuda:
             if self.device_id != torch.cuda.current_device():
                 self.device_id = torch.cuda.current_device()

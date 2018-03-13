@@ -275,7 +275,7 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 				int outk, ink;
 				float volj = 1.0f/(r2[ndims]*density[b*N + j]);
 				float norm = 1.0f;
-				if(dis_norm)
+				if(dis_norm && d > 0.0f)
 					norm /= d;
 				float* out_ptrj = out + b*nkernels*N + j*nkernels;
 				float* data_ptrj = data + b*nchannels*N + j*nchannels;

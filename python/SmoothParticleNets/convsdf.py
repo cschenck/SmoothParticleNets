@@ -118,6 +118,11 @@ class ConvSDF(torch.nn.Module):
         ec.check_tensor_dims(poses, "poses", (batch_size, M, self.ndim + R))
         ec.check_tensor_dims(scales, "scales", (batch_size, M,))
 
+        locs = locs.contiguous()
+        idxs = idxs.contiguous()
+        poses = poses.contiguous()
+        scales = scales.contiguous()
+
         # Do the compution.
         convsdf = _ConvSDFFunction(self.sdfs, self.sdf_offsets, self.sdf_shapes,
             self.kernel_size, self.dilation, self.max_distance)
