@@ -143,4 +143,13 @@ KERNELS["spiky"] = "15.0f/(M_PI*H*H*H)*(1.0f-d/H)*(1.0f-d/H)"
 """
 KERNELS["dspiky"] = "-15.0f/(M_PI*H*H*H)*2.0f*(1.0f - d/H)/H"
 
+""" COHESION:
+-(1.0f + \eta)/\eta^2*(d/H)^3 + (\eta^2 + \eta + 1)/\eta^2*(d/H)^2 - 1
+	\eta * \sigma * (1 - d/H)^2
+		 H = radius
+		 d = distance
+	  \eta = 0.5 (rest)
+"""
+KERNELS["cohesion"] = "-6.0f*(d/H)*(d/H)*(d/H) + 7*(d/H)*(d/H) - 1"
+
 KERNEL_NAMES = sorted(KERNELS.keys())
