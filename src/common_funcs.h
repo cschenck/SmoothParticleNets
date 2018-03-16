@@ -280,7 +280,7 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 				float* out_ptrj = out + b*nkernels*N + j*nkernels;
 				float* data_ptrj = data + b*nchannels*N + j*nchannels;
 				float* ddata_ptrj = ddata + b*nchannels*N + j*nchannels;
-				float kw = kernel_w(d, radius, 9);
+				float kw = kernel_w(d, radius, kernel_fn);
 				for(outk = 0; outk < nkernels; ++outk)
 				{
 					for(ink = 0; ink < nchannels; ++ink)
