@@ -92,7 +92,7 @@ KERNELS["dpressure2"] = "(-90.0f/(M_PI*H*H*H*H*H*H))*(H-d)*(H-2*d)/d"
 	\sigma = 1/pi (dim norm)
 	  \eta = 15/(2*H^3) (norm)
 """
-KERNELS["viscosity"] = "(15.0f/(2*M_PI*H*H*H))*(-d*d*d/(2*H*H*H)+d*d/(H*H)+H/(2*d)-1)"
+KERNELS["viscosity"] = "(15.0f/(2*M_PI*H*H*H))*(-d*d*d/(2*H*H*H)+d*d/(H*H)+H/(2*(d+1e-15))-1)"
 
 """ DVISCOSITY:
 	\eta * \sigma * d * (-3*d/(2*H^3) + 2/(H^2) - H/(2*d^3))
@@ -101,7 +101,8 @@ KERNELS["viscosity"] = "(15.0f/(2*M_PI*H*H*H))*(-d*d*d/(2*H*H*H)+d*d/(H*H)+H/(2*
 	\sigma = 1/pi (dim norm)
 	  \eta = 15/(2*H^3) (norm)
 """
-KERNELS["dviscosity"] = "(15.0f/(2*M_PI*H*H*H))*d*(-3*d/(2*H*H*H)+2/(H*H)-H/(2*d*d*d))"
+KERNELS["dviscosity"] = (
+	"(15.0f/(2*M_PI*H*H*H))*d*(-3*d/(2*H*H*H)+2/(H*H)-H/(2*(d+1e-15)*(d+1e-15)*(d+1e-15)))")
 
 """ DVISCOSITY2:
 	\eta * \sigma * max(0, H - d)
@@ -111,5 +112,35 @@ KERNELS["dviscosity"] = "(15.0f/(2*M_PI*H*H*H))*d*(-3*d/(2*H*H*H)+2/(H*H)-H/(2*d
 	  \eta = 45/(H^6) (norm)
 """
 KERNELS["dviscosity2"] = "(45.0f/(M_PI*H*H*H*H*H*H))*(H-d)"
+
+""" INDIRECT:
+	H - d
+		 H = radius
+		 d = distance
+"""
+KERNELS["indirect"] = "H - d"
+
+""" CONSTANT:
+	1
+"""
+KERNELS["constant"] = "1"
+
+""" SPIKY:
+	\eta * \sigma * (1 - d/H)^2
+		 H = radius
+		 d = distance
+	\sigma = 1/pi (dim norm)
+	  \eta = 15/(H^3) (norm)
+"""
+KERNELS["spiky"] = "15.0f/(M_PI*H*H*H)*(1.0f-d/H)*(1.0f-d/H)"
+
+""" DSPIKY:
+	\eta * \sigma * 2 * (1 - d/H)/H
+		 H = radius
+		 d = distance
+	\sigma = 1/pi (dim norm)
+	  \eta = 15/(H^3) (norm)
+"""
+KERNELS["dspiky"] = "-15.0f/(M_PI*H*H*H)*2.0f*(1.0f - d/H)/H"
 
 KERNEL_NAMES = sorted(KERNELS.keys())
