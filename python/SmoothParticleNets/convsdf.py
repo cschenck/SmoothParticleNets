@@ -83,12 +83,9 @@ class ConvSDF(torch.nn.Module):
         """ Compute a forward pass of the SDF Convolution Layer.
 
         Inputs:
-            -locs: A BxNx(D+1) tensor where B is the batch size, N is the number
+            -locs: A BxNxD tensor where B is the batch size, N is the number
                    of query locations, and D is the dimensionality of the 
-                   coordinate space. The last element in the D+1 dimension is not
-                   used by this layer, however it is kept for compatibility with
-                   the ConvSP layer (see that layer's forward documention for
-                   details).
+                   coordinate space. 
             -idxs: A BxM tensor where M is the number of SDfs in the scene. Each 
                    element of idxs is an index of an SDF in the sdfs list passed
                    to the constructor.
@@ -113,7 +110,7 @@ class ConvSDF(torch.nn.Module):
         N = locs.size()[1]
         M = idxs.size()[1]
         R = {1 : 0, 2 : 1, 3 : 4}[self.ndim]
-        ec.check_tensor_dims(locs, "locs", (batch_size, N, self.ndim + 1))
+        ec.check_tensor_dims(locs, "locs", (batch_size, N, self.ndim))
         ec.check_tensor_dims(idxs, "idxs", (batch_size, M,))
         ec.check_tensor_dims(poses, "poses", (batch_size, M, self.ndim + R))
         ec.check_tensor_dims(scales, "scales", (batch_size, M,))

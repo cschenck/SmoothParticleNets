@@ -194,9 +194,8 @@ Function that that computes the partial values for the kernel cells for a given 
 Given a particle index in a specific batch, this function loops through the given range
 of particle indices, adding their contribution to each of the kernel cells around the
 given particle. Inputs are:
-	-locs: (batch_size X N X ndimss+1) the cartesian coordinates of all the particles.
+	-locs: (batch_size X N X ndims) the cartesian coordinates of all the particles.
 	-data: (batch_size X N X nchannels) the features associated with each particle.
-	-density: (batch_size X N) the density at each particle.
 	-weight: (nkernels X nchannels X ncells) the kernel weights.
 	-bias: (nkernels) the kernel biases.
 	-batch_size: the size of the batch.
@@ -227,18 +226,17 @@ given particle. Inputs are:
 			 NULL (backward computation).
 **/
 DEVICE_FUNC
-void compute_kernel_cells(float* locs, float* data, float* density, float* weight, 
+void compute_kernel_cells(float* locs, float* data, float* weight, 
 	float* bias, int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells,
 	float radius, float* kernel_size, float* dilation, int dis_norm, int kernel_fn, float* out, 
 	int b, int n, int start, int end, float* ddata, float* dweight)
 {
 	int idxs[MAX_CARTESIAN_DIM];
-	float* r = locs + (b*N + n)*(ndims + 1);
+	float* r = locs + (b*N + n)*ndims;
 	int backward = ((ddata != NULL) || (dweight != NULL));
 	float* out_ptrn = out + b*nkernels*N + n*nkernels;
 	float* data_ptrn = data + b*nchannels*N + n*nchannels;
 	float* ddata_ptrn = ddata + b*nchannels*N + n*nchannels;
-	float voln = 1.0f/(r[ndims]*density[b*N + n]);
 
 	if(start < n)
 		start = n;
@@ -246,7 +244,7 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 	int j;
 	for(j = start; j < end && j < N; ++j)
 	{
-		float* r2 = locs + (b*N + j)*(ndims + 1);
+		float* r2 = locs + (b*N + j)*ndims;
 		float d = dissqr(r, r2, ndims);
 		float dd = fastroot(ndims);
 		float maxdil = lmaxf(dilation, ndims);
@@ -273,7 +271,6 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 			{
 				d = sqrtf(d);
 				int outk, ink;
-				float volj = 1.0f/(r2[ndims]*density[b*N + j]);
 				float norm = 1.0f;
 				if(dis_norm && d > 0.0f)
 					norm /= d;
@@ -303,26 +300,26 @@ void compute_kernel_cells(float* locs, float* data, float* density, float* weigh
 							if(ddata != NULL)
 							{
 								atomicAdd(ddata_ptrj + ink, 
-									(*(out_ptrn + outk))*weightnj*volj*kw*norm);
+									(*(out_ptrn + outk))*weightnj*kw*norm);
 								if(j != n)
 									atomicAdd(ddata_ptrn + ink, 
-										(*(out_ptrj + outk))*weightjn*voln*kw*norm);
+										(*(out_ptrj + outk))*weightjn*kw*norm);
 							}
 							if(dweight != NULL)
 							{
 								atomicAdd(dweight + outk*nchannels*ncells + 
 										  ink*ncells + kernel_idx, 
-									(*(out_ptrn + outk))*volj*(*(data_ptrj + ink))*kw*norm);
+									(*(out_ptrn + outk))*(*(data_ptrj + ink))*kw*norm);
 								if(j != n)
 									atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + 
 											  (ncells - kernel_idx - 1), 
-										(*(out_ptrj + outk))*voln*(*(data_ptrn + ink))*kw*norm);
+										(*(out_ptrj + outk))*(*(data_ptrn + ink))*kw*norm);
 							}
 						}
 						else
 						{
-							float f1 = weightnj*volj*(*(data_ptrj + ink))*kw*norm;
-							float g1 = weightjn*voln*(*(data_ptrn + ink))*kw*norm;
+							float f1 = weightnj*(*(data_ptrj + ink))*kw*norm;
+							float g1 = weightjn*(*(data_ptrn + ink))*kw*norm;
 							atomicAdd(out_ptrn + outk, f1);
 							if(j != n)
 								atomicAdd(out_ptrj + outk, g1);
@@ -346,7 +343,7 @@ Given a location index in a specific batch, this function loops through the give
 indexed in idxs and computes the minimum value at each kernel location around each cell
 and multiplies those values by the kernel weights for the given kernel index outk, and
 stores them in out at that location's and kernel's index. The inputs are:
-	-locs: (batch_size X N X ndimss+1) the cartesian coordinates of each query location.
+	-locs: (batch_size X N X ndims) the cartesian coordinates of each query location.
 	-batch_size: the size of the batch.
 	-N: the number of particles in each batch.
 	-ndims: the cardinality of the cartesian coordinate space.
@@ -413,7 +410,7 @@ void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, flo
 		fsdf_cache[i] = 0;
 	}
 
-	float* r = locs + (b*N + n)*(ndims + 1);
+	float* r = locs + (b*N + n)*ndims;
 	float dd = fastroot(ndims);
 	float maxdil = lmaxf(dilation, ndims);
 	int maxkern = (int)lmaxf(kernel_size, ndims)/2;

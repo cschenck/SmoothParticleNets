@@ -18,7 +18,7 @@ size_t spnc_get_shared_mem_size(int device)
 }
 
 
-int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t, 
+int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, 
     THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, int dis_norm, int kernel_fn, 
     THCudaTensor* out_t, size_t nshared_device_mem)
@@ -26,13 +26,12 @@ int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor
 
     float* locs = THCudaTensor_data(state, locs_t);
     float* data = THCudaTensor_data(state, data_t);
-    float* density = THCudaTensor_data(state, density_t);
     float* weight = THCudaTensor_data(state, weight_t);
     float* bias = THCudaTensor_data(state, bias_t);
     int batch_size = locs_t->size[0];
     int N = locs_t->size[1];
     int nchannels = data_t->size[2];
-    int ndims = locs_t->size[2] - 1;
+    int ndims = locs_t->size[2];
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
     float* kernel_size = THCudaTensor_data(state, kernel_size_t);
@@ -40,13 +39,13 @@ int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_convsp(locs, data, density, weight, bias, batch_size, N, nchannels, ndims,
+    return cuda_convsp(locs, data, weight, bias, batch_size, N, nchannels, ndims,
         nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, out, NULL, 
         NULL, stream, nshared_device_mem);
 
 }
 
-int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t, 
+int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, 
     THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, int dis_norm, int kernel_fn, 
     THCudaTensor* out_t, THCudaTensor* ddata_t, THCudaTensor* dweight_t, 
@@ -54,7 +53,6 @@ int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTenso
 {
     float* locs = THCudaTensor_data(state, locs_t);
     float* data = THCudaTensor_data(state, data_t);
-    float* density = THCudaTensor_data(state, density_t);
     float* weight = THCudaTensor_data(state, weight_t);
     float* bias = THCudaTensor_data(state, bias_t);
     float* ddata = THCudaTensor_data(state, ddata_t);
@@ -62,7 +60,7 @@ int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTenso
     int batch_size = locs_t->size[0];
     int N = locs_t->size[1];
     int nchannels = data_t->size[2];
-    int ndims = locs_t->size[2] - 1;
+    int ndims = locs_t->size[2];
     int nkernels = weight_t->size[0];
     int ncells = weight_t->size[2];
     float* kernel_size = THCudaTensor_data(state, kernel_size_t);
@@ -70,7 +68,7 @@ int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTenso
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_convsp(locs, data, density, weight, bias, batch_size, N, nchannels, ndims,
+    return cuda_convsp(locs, data, weight, bias, batch_size, N, nchannels, ndims,
         nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, out, ddata, 
         dweight, stream, nshared_device_mem);
 }
@@ -92,7 +90,7 @@ int spnc_convsdf_forward(THCudaTensor* locs_t, THCudaTensor* idxs_t, THCudaTenso
     float* bias = THCudaTensor_data(state, bias_t); 
     int batch_size = locs_t->size[0];
     int N = locs_t->size[1];
-    int ndims = locs_t->size[2] - 1;
+    int ndims = locs_t->size[2];
     int M = idxs_t->size[1];
     int pose_len = poses_t->size[2];
     int nkernels = weight_t->size[0];
@@ -125,7 +123,7 @@ int spnc_convsdf_backward(THCudaTensor* locs_t, THCudaTensor* idxs_t, THCudaTens
     float* dweight = THCudaTensor_data(state, dweight_t); 
     int batch_size = locs_t->size[0];
     int N = locs_t->size[1];
-    int ndims = locs_t->size[2] - 1;
+    int ndims = locs_t->size[2];
     int M = idxs_t->size[1];
     int pose_len = poses_t->size[2];
     int nkernels = weight_t->size[0];

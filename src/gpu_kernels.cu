@@ -126,7 +126,7 @@ size_t GetSharedMemPerBlock(int device)
 /* Layer Funcs */
 
 __global__
-void kernel_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
+void kernel_convsp(float* locs, float* data, float* weight, float* bias, 
 	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
 	float radius, float* kernel_size, float* dilation, int dis_norm, int kernel_fn, 
 	float* out, float* ddata, float* dweight, int block_size, int num_blocks)
@@ -187,12 +187,12 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 	// make sure to copy the data over for each pointer sequentially.
 	// Start with locs.
 	float* locs_p = ptr;
-	for(i = th; i < ni*(ndims + 1); i += blockDim.x)
-		ptr[i] = locs[b*N*(ndims + 1) + starti*(ndims + 1) + i];
-	ptr += ni*(ndims + 1);
-	for(i = th; i < nj*(ndims + 1); i += blockDim.x)
-		ptr[i] = locs[b*N*(ndims + 1) + startj*(ndims + 1) + i];
-	ptr += nj*(ndims + 1);
+	for(i = th; i < ni*ndims; i += blockDim.x)
+		ptr[i] = locs[b*N*ndims + starti*ndims + i];
+	ptr += ni*ndims;
+	for(i = th; i < nj*ndims; i += blockDim.x)
+		ptr[i] = locs[b*N*ndims + startj*ndims + i];
+	ptr += nj*ndims;
 
 	// Copy over data.
 	float* data_p = ptr;
@@ -202,15 +202,6 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 	for(i = th; i < nj*nchannels; i += blockDim.x)
 		ptr[i] = data[b*N*nchannels + startj*nchannels + i];
 	ptr += nj*nchannels;
-
-	// Copy over density.
-	float* density_p = ptr;
-	for(i = th; i < ni; i += blockDim.x)
-		ptr[i] = density[b*N + starti + i];
-	ptr += ni;
-	for(i = th; i < nj; i += blockDim.x)
-		ptr[i] = density[b*N + startj + i];
-	ptr += nj;
 
 	// Copy over out.
 	float* out_p = ptr;
@@ -254,7 +245,7 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 		int start = (i % nj) + (bi == bj ? 0 : ni);
 		int end = fminf(nj, (i % nj) + (th + 1)*nops - i) + (bi == bj ? 0 : ni);
 		if(start >= ni + (bi == bj ? 0 : nj)) break;
-		compute_kernel_cells(locs_p, data_p, density_p, weight_p, bias, 1, ni + nj, 
+		compute_kernel_cells(locs_p, data_p, weight_p, bias, 1, ni + nj, 
     		nchannels, ndims, nw, ncells, radius, kernel_size_p, dilation_p, 
     		dis_norm, kernel_fn, out_p, 0, n, start, end, ddata_p, dweight_p);
 		i += end - start;
@@ -297,7 +288,7 @@ void kernel_convsp(float* locs, float* data, float* density, float* weight, floa
 			atomicAdd(dweight + startw*nchannels*ncells + i, dweight_p[i]);
 	}
 }
-int cuda_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
+int cuda_convsp(float* locs, float* data, float* weight, float* bias, 
 	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
 	float radius, float* kernel_size, float* dilation, int dis_norm, int kernel_fn, 
 	float* out, float* ddata, float* dweight, cudaStream_t stream, size_t nshared_device_mem)
@@ -323,7 +314,7 @@ int cuda_convsp(float* locs, float* data, float* density, float* weight, float* 
 			"shared memory!\n");
 		return 0;
 	}
-	size_t memperparticle = (ndims + 1)*sizeof(float) + // locs
+	size_t memperparticle = ndims*sizeof(float) + // locs
 							nchannels*sizeof(float) +   // data
 							sizeof(float) +             // density
 							nw*sizeof(float);           // out
@@ -339,7 +330,7 @@ int cuda_convsp(float* locs, float* data, float* density, float* weight, float* 
     dim3 blocks(batch_size, nblocks*(nblocks + 1)/2, nweight_blocks);
     dim3 threads(min(256, block_size*block_size));
 
-	kernel_convsp<<<blocks, threads, nshared_mem, stream>>>(locs, data, density, weight, bias,
+	kernel_convsp<<<blocks, threads, nshared_mem, stream>>>(locs, data, weight, bias,
 		batch_size, N, nchannels, ndims, nkernels, ncells, radius, kernel_size, 
 		dilation, dis_norm, kernel_fn, out, ddata, dweight, block_size, nblocks);
 	cudaDeviceSynchronize();

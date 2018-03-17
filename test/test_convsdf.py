@@ -83,7 +83,7 @@ def eval_convsdf(cuda=False):
 
     np.random.seed(0)
 
-    locs = np.random.rand(BATCH_SIZE, N, NDIM + 1)
+    locs = np.random.rand(BATCH_SIZE, N, NDIM)
     weights = np.random.rand(NKERNELS, np.prod(KERNEL_SIZE))
     biases = np.random.rand(NKERNELS)
 
@@ -121,7 +121,7 @@ def eval_convsdf(cuda=False):
         for k, kidx in enumerate(allkidx):
             for i in range(N):
                 for b in range(BATCH_SIZE):
-                    r = locs[b, i, :3] + [kidx[::-1][j]*DILATION for j in range(3)]
+                    r = locs[b, i, :] + [kidx[::-1][j]*DILATION for j in range(3)]
                     minv = MAX_DISTANCE
                     for m in range(M):
                         mm = idxs[b, m]

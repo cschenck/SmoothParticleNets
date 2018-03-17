@@ -1,11 +1,11 @@
 size_t spnc_get_shared_mem_size(int device);
 
-int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t, 
+int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, 
     THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, int dis_norm, int kernel_fn, 
     THCudaTensor* out_t, size_t nshared_device_mem);
 
-int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, THCudaTensor* density_t, 
+int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, 
     THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
     THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, int dis_norm, int kernel_fn, 
     THCudaTensor* out_t, THCudaTensor* ddata_t, THCudaTensor* dweight_t, 

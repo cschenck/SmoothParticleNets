@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-int cuda_convsp(float* locs, float* data, float* density, float* weight, float* bias, 
+int cuda_convsp(float* locs, float* data, float* weight, float* bias, 
 	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
 	float radius, float* kernel_size, float* dilation, int dis_norm, int kernel_fn, float* out, 
 	float* ddata, float* dweight, cudaStream_t stream, size_t nshared_device_mem);
