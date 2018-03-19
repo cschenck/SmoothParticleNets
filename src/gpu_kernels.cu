@@ -148,162 +148,18 @@ void kernel_convsp(
 		const int block_size, 
 		const int num_blocks)
 {
-	extern __shared__ float shared_ptr[];
-
-	// First compute where in the block we are.
-	int b = blockIdx.x;
-	int num_blocks2 = num_blocks*(num_blocks + 1)/2;
-	int bi = num_blocks - 1 - floorf((sqrtf(8*(num_blocks2 - 1 - blockIdx.y) + 1) - 1)/2);
-	int bj = num_blocks - num_blocks2 + blockIdx.y + 
-				(num_blocks - 1 - bi)*(num_blocks - bi)/2;
-	int starti = bi*block_size;
-	int endi = fminf(N, (bi + 1)*block_size);
-	int ni = endi - starti;
-	int startj = bj*block_size;
-	int endj = fminf(N, (bj + 1)*block_size);
-	int nj = endj - startj;
-	int th = threadIdx.x;
-	int backwards = (ddata != NULL || dweight != NULL);
-	int nweight_blocks = gridDim.z;
-	int weight_block_size = ceilf(1.0f*nkernels/nweight_blocks);
-	int bw = blockIdx.z;
-	int startw = bw*weight_block_size;
-	int endw = fminf(nkernels, (bw + 1)*weight_block_size);
-	int nw = endw - startw;
-
-	// Next copy over the weight.
-	float* ptr = shared_ptr;
-	int i, j;
-	for(i = th; i < nw*nchannels*ncells; i += blockDim.x)
-		ptr[i] = weight[i + startw*nchannels*ncells];
-	const float* weight_p = ptr;
-	ptr += nw*nchannels*ncells;
-
-	// Copy over the kernel_size and dilation.
-	for(i = th; i < ndims; i += blockDim.x)
-	{
-		ptr[i] = kernel_size[i];
-		ptr[ndims + i] = dilation[i];
-	}
-	const float* kernel_size_p = ptr;
-	const float* dilation_p = ptr + ndims;
-	ptr += 2*ndims;
-
-	// Alocate space for dweight only if we're going backwards. Only copy
-	// dweight over after.
-	float* dweight_p = NULL;
-	if(dweight != NULL)
-	{
-		for(i = th; i < nw*nchannels*ncells; i += blockDim.x)
-			ptr[i] = 0.0f;
-		dweight_p = ptr;
-		ptr += nw*nchannels*ncells;
-	}
-
-	// Next we're going to copy over particle data. Since we're computing for 2 blocks,
-	// make sure to copy the data over for each pointer sequentially.
-	// Start with locs.
-	const float* locs_p = ptr;
-	for(i = th; i < ni*ndims; i += blockDim.x)
-		ptr[i] = locs[b*N*ndims + starti*ndims + i];
-	ptr += ni*ndims;
-	for(i = th; i < nj*ndims; i += blockDim.x)
-		ptr[i] = locs[b*N*ndims + startj*ndims + i];
-	ptr += nj*ndims;
-
-	// Copy over data.
-	const float* data_p = ptr;
-	for(i = th; i < ni*nchannels; i += blockDim.x)
-		ptr[i] = data[b*N*nchannels + starti*nchannels + i];
-	ptr += ni*nchannels;
-	for(i = th; i < nj*nchannels; i += blockDim.x)
-		ptr[i] = data[b*N*nchannels + startj*nchannels + i];
-	ptr += nj*nchannels;
-
-	// Copy over out.
-	float* out_p = ptr;
-	for(i = th; i < ni; i += blockDim.x)
-	{
-		for(j = 0; j < nw; ++j)
-			ptr[i*nw + j] = (backwards ? 
-				out[b*N*nkernels + (starti + i)*nkernels + (startw + j)] : 0.0f);
-	}
-	ptr += ni*nw;
-	for(i = th; i < nj; i += blockDim.x)
-	{
-		for(j = 0; j < nw; ++j)
-			ptr[i*nw + j] = (backwards ? 
-				out[b*N*nkernels + (startj + i)*nkernels + (startw + j)] : 0.0f);
-	}
-	ptr += nj*nw;
-
-	// Alocate space for ddata only if we're going backwards. Only copy
-	// ddata over after.
-	float* ddata_p = NULL;
-	if(ddata != NULL)
-	{
-		ddata_p = ptr;
-		for(i = th; i < ni*nchannels; i += blockDim.x)
-			ptr[i] = 0.0f;
-		ptr += ni*nchannels;
-		for(i = th; i < nj*nchannels; i += blockDim.x)
-			ptr[i] = 0.0f;
-		ptr += nj*nchannels;
-	}
-
-	// Wait for the copying to finish.
-	__syncthreads();
-
-	int nops = ceilf(1.0f*ni*nj/blockDim.x);
-	for(i = th*nops; i < (th + 1)*nops;)
-	{
-		int n = i/nj;
-		if(n >= ni) break;
-		int start = (i % nj) + (bi == bj ? 0 : ni);
-		int end = fminf(nj, (i % nj) + (th + 1)*nops - i) + (bi == bj ? 0 : ni);
-		if(start >= ni + (bi == bj ? 0 : nj)) break;
-		compute_kernel_cells(locs_p, data_p, weight_p, bias, 1, ni + nj, 
-    		nchannels, ndims, nw, ncells, radius, kernel_size_p, dilation_p, 
-    		dis_norm, kernel_fn, out_p, 0, n, start, end, ddata_p, dweight_p);
-		i += end - start;
-	}
-
-	// Wait again for everyone to finish before copying back over.
-	__syncthreads();
-
-	// If we're not going backwards, copy out back over.
-	if(!backwards)
-	{
-		for(i = th; i < ni; i += blockDim.x)
-		{
-			for(j = 0; j < nw; ++j)
-				atomicAdd(out + b*N*nkernels + (starti + i)*nkernels + (startw + j),
-					out_p[i*nw + j]);
-		}
-		for(i = th; i < nj; i += blockDim.x)
-		{
-			for(j = 0; j < nw; ++j)
-				atomicAdd(out + b*N*nkernels + (startj + i)*nkernels + (startw + j),
-					out_p[i*nw + j + ni*nw]);
-		}
-	}
-
-	// Copy ddata back over if it's not null.
-	if(ddata != NULL)
-	{
-		for(i = th; i < ni*nchannels; i += blockDim.x)
-			atomicAdd(ddata + b*N*nchannels + starti*nchannels + i, ddata_p[i]);
-		for(i = th; i < nj*nchannels; i += blockDim.x)
-			atomicAdd(ddata + b*N*nchannels + startj*nchannels + i, 
-				ddata_p[i + ni*nchannels]);
-	}
-
-	// Copy dweight back over if it's not null.
-	if(dweight != NULL)
-	{
-		for(i = th; i < nw*nchannels*ncells; i += blockDim.x)
-			atomicAdd(dweight + startw*nchannels*ncells + i, dweight_p[i]);
-	}
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < N*batch_size*num_blocks; i += stride)
+    {
+    	int b = i/(N*num_blocks);
+    	int n = (i % (N*num_blocks))/num_blocks;
+    	int block = i % num_blocks;
+    	int start = block*block_size;
+    	compute_kernel_cells(locs, data, weight, bias, batch_size, N, 
+    		nchannels, ndims, nkernels, ncells, radius, kernel_size, dilation, 
+    		dis_norm, kernel_fn, out, b, n, start, start + block_size, ddata, dweight);
+    }
 }
 int cuda_convsp(
 		const float* locs, 
@@ -327,46 +183,16 @@ int cuda_convsp(
 		cudaStream_t stream, 
 		const size_t nshared_device_mem)
 {
-	size_t fixedmem = 0;
-	int nweight_blocks;
-	int nw;
-	for(nweight_blocks = 1; nweight_blocks <= nkernels; ++nweight_blocks)
-	{
-		nw = ceilf(1.0f*nkernels/nweight_blocks);
-		fixedmem = 0;
-		fixedmem += nw*nchannels*ncells*sizeof(float); // weight
-		fixedmem += ndims*sizeof(float); // kernel_size
-		fixedmem += ndims*sizeof(float); // dilation
-		if(dweight != NULL)
-    		fixedmem += nw*nchannels*ncells*sizeof(float);
-    	if(fixedmem <= nshared_device_mem/2)
-    		break;
-	}
-	if(nweight_blocks > nkernels)
-	{
-		printf("error in cuda_convsp: Unable to fit weights in less than half of "
-			"shared memory!\n");
-		return 0;
-	}
-	size_t memperparticle = ndims*sizeof(float) + // locs
-							nchannels*sizeof(float) +   // data
-							sizeof(float) +             // density
-							nw*sizeof(float);           // out
-    if(ddata != NULL)
-    	memperparticle += nchannels*sizeof(float);
-    
+	const int NUM_BLOCKS = 8;
+	int block_size = ceilf(1.0f*N/NUM_BLOCKS);
+	int nops = batch_size*N*NUM_BLOCKS;
+    int numBlocks = ceil(nops * (1.0/256));
+    dim3 blocks(numBlocks);
+    dim3 threads(256);
 
-    int block_size = (nshared_device_mem - fixedmem)/(2*memperparticle);
-    if(block_size > N) block_size = N;
-    int nblocks = ceil(1.0f*N/block_size);
-    size_t nshared_mem = fixedmem + 2*block_size*memperparticle;
-
-    dim3 blocks(batch_size, nblocks*(nblocks + 1)/2, nweight_blocks);
-    dim3 threads(min(256, block_size*block_size));
-
-	kernel_convsp<<<blocks, threads, nshared_mem, stream>>>(locs, data, weight, bias,
+	kernel_convsp<<<blocks, threads, 0, stream>>>(locs, data, weight, bias,
 		batch_size, N, nchannels, ndims, nkernels, ncells, radius, kernel_size, 
-		dilation, dis_norm, kernel_fn, out, ddata, dweight, block_size, nblocks);
+		dilation, dis_norm, kernel_fn, out, ddata, dweight, block_size, NUM_BLOCKS);
 	cudaDeviceSynchronize();
     return PrintOnCudaError("cuda_convsp");
 }
