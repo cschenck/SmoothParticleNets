@@ -30,7 +30,7 @@ typedef struct
 #endif
 
 DEVICE_FUNC
-float kernel_w(float d, float H, int fn)
+float kernel_w(const float d, const float H, const int fn)
 {
 	if(d > H) return 0.0f;
 	if(!VALIDATE_KERNEL_ID(fn))
@@ -43,7 +43,7 @@ float kernel_w(float d, float H, int fn)
 
 
 DEVICE_FUNC
-float dissqr(float* x, float* y, int ndims)
+float dissqr(const float* x, const float* y, const int ndims)
 {
 	float ret = 0.0f;
 	int i;
@@ -53,7 +53,7 @@ float dissqr(float* x, float* y, int ndims)
 }
 
 DEVICE_FUNC
-float fastroot(float x)
+float fastroot(const float x)
 {
 	if(x == 1.0f)
 		return 1.0f;
@@ -66,7 +66,7 @@ float fastroot(float x)
 }
 
 DEVICE_FUNC
-float lmaxf(float* x, int len)
+float lmaxf(const float* x, const int len)
 {
 	float ret = x[0];
 	int i;
@@ -79,7 +79,7 @@ float lmaxf(float* x, int len)
 }
 
 DEVICE_FUNC
-int lmaxi(int* x, int len)
+int lmaxi(const int* x, const int len)
 {
 	int ret = x[0];
 	int i;
@@ -92,7 +92,7 @@ int lmaxi(int* x, int len)
 }
 
 DEVICE_FUNC
-float4 quaternion_conjugate(float4 quat)
+float4 quaternion_conjugate(const float4 quat)
 {
     float4 ret = quat;
     ret.x *= -1.0;
@@ -102,7 +102,7 @@ float4 quaternion_conjugate(float4 quat)
 }
 
 DEVICE_FUNC
-float4 quaternion_mult(float4 q1, float4 q2)
+float4 quaternion_mult(const float4 q1, const float4 q2)
 {
     float4 ret;
     ret.w = q1.w*q2.w - q1.x*q2.x - q1.y*q2.y - q1.z*q2.z;
@@ -113,8 +113,8 @@ float4 quaternion_mult(float4 q1, float4 q2)
 }
 
 DEVICE_FUNC
-void point_in_coordinate_frame(float* point, int ndims, float* translation, 
-	float* rotation, float* out)
+void point_in_coordinate_frame(const float* point, const int ndims, 
+	const float* translation, const float* rotation, float* out)
 {
 	float m, theta;
 	float4 r, p;
@@ -147,13 +147,13 @@ void point_in_coordinate_frame(float* point, int ndims, float* translation,
 }
 
 DEVICE_FUNC
-float rec_nlinear_interp(float* grid, float* grid_dims, int ndims, 
-							float* point01, int* lowidx, int curdim)
+float rec_nlinear_interp(const float* grid, const float* grid_dims, const int ndims, 
+						const float* point01, int* lowidx, const int curdim)
 {
 	int i, j, k;
 	if(curdim == ndims)
 	{
-		float* ptr = grid;
+		const float* ptr = grid;
 		for(i = 0; i < ndims; ++i)
 		{
 			k = lowidx[i];
@@ -174,7 +174,8 @@ float rec_nlinear_interp(float* grid, float* grid_dims, int ndims,
 }
 
 DEVICE_FUNC
-float nlinear_interp(float* grid, float* grid_dims, int ndims, float cell_size, float* point)
+float nlinear_interp(const float* grid, const float* grid_dims, const int ndims, 
+	const float cell_size, const float* point)
 {
 	int lowidx[MAX_CARTESIAN_DIM];
 	float point01[MAX_CARTESIAN_DIM];
@@ -226,16 +227,35 @@ given particle. Inputs are:
 			 NULL (backward computation).
 **/
 DEVICE_FUNC
-void compute_kernel_cells(float* locs, float* data, float* weight, 
-	float* bias, int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells,
-	float radius, float* kernel_size, float* dilation, int dis_norm, int kernel_fn, float* out, 
-	int b, int n, int start, int end, float* ddata, float* dweight)
+void compute_kernel_cells(
+		const float* locs, 
+		const float* data, 
+		const float* weight, 
+		const float* bias, 
+		const int batch_size, 
+		const int N, 
+		const int nchannels, 
+		const int ndims,
+		const int nkernels,
+		const int ncells,
+		const float radius,
+		const float* kernel_size,
+		const float* dilation,
+		const int dis_norm,
+		const int kernel_fn,
+		float* out, 
+		const int b,
+		const int n,
+		int start,
+		const int end,
+		float* ddata, 
+		float* dweight)
 {
 	int idxs[MAX_CARTESIAN_DIM];
-	float* r = locs + (b*N + n)*ndims;
+	const float* r = locs + (b*N + n)*ndims;
 	int backward = ((ddata != NULL) || (dweight != NULL));
 	float* out_ptrn = out + b*nkernels*N + n*nkernels;
-	float* data_ptrn = data + b*nchannels*N + n*nchannels;
+	const float* data_ptrn = data + b*nchannels*N + n*nchannels;
 	float* ddata_ptrn = ddata + b*nchannels*N + n*nchannels;
 
 	if(start < n)
@@ -244,7 +264,7 @@ void compute_kernel_cells(float* locs, float* data, float* weight,
 	int j;
 	for(j = start; j < end && j < N; ++j)
 	{
-		float* r2 = locs + (b*N + j)*ndims;
+		const float* r2 = locs + (b*N + j)*ndims;
 		float d = dissqr(r, r2, ndims);
 		float dd = fastroot(ndims);
 		float maxdil = lmaxf(dilation, ndims);
@@ -275,7 +295,7 @@ void compute_kernel_cells(float* locs, float* data, float* weight,
 				if(dis_norm && d > 0.0f)
 					norm /= d;
 				float* out_ptrj = out + b*nkernels*N + j*nkernels;
-				float* data_ptrj = data + b*nchannels*N + j*nchannels;
+				const float* data_ptrj = data + b*nchannels*N + j*nchannels;
 				float* ddata_ptrj = ddata + b*nchannels*N + j*nchannels;
 				float kw = kernel_w(d, radius, kernel_fn);
 				for(outk = 0; outk < nkernels; ++outk)
@@ -394,11 +414,33 @@ stores them in out at that location's and kernel's index. The inputs are:
 				 improve efficiency.
 **/
 DEVICE_FUNC
-void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, float* idxs,
-	float* poses, float* scales, int M, int pose_len, float* sdfs, float* sdf_offsets, 
-	float* sdf_shapes, float* weight, float* bias, int nkernels, int ncells, 
-	float* kernel_size, float* dilation, float max_distance, float* out, int b, int n, 
-	int outk, float* dweight, int* isdf_cache, float* fsdf_cache)
+void compute_sdf_kernel_cells(
+		const float* locs, 
+		const int batch_size, 
+		const int N, 
+		const int ndims, 
+		const float* idxs,
+		const float* poses, 
+		const float* scales, 
+		const int M, 
+		const int pose_len, 
+		const float* sdfs, 
+		const float* sdf_offsets, 
+		const float* sdf_shapes, 
+		const float* weight, 
+		const float* bias, 
+		const int nkernels, 
+		const int ncells, 
+		const float* kernel_size, 
+		const float* dilation, 
+		const float max_distance, 
+		float* out, 
+		const int b, 
+		const int n, 
+		const int outk, 
+		float* dweight, 
+		int* isdf_cache, 
+		float* fsdf_cache)
 {
 	float r2[MAX_CARTESIAN_DIM];
 	int backward = (dweight != NULL);
@@ -410,7 +452,7 @@ void compute_sdf_kernel_cells(float* locs, int batch_size, int N, int ndims, flo
 		fsdf_cache[i] = 0;
 	}
 
-	float* r = locs + (b*N + n)*ndims;
+	const float* r = locs + (b*N + n)*ndims;
 	float dd = fastroot(ndims);
 	float maxdil = lmaxf(dilation, ndims);
 	int maxkern = (int)lmaxf(kernel_size, ndims)/2;

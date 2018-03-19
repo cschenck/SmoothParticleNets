@@ -126,10 +126,27 @@ size_t GetSharedMemPerBlock(int device)
 /* Layer Funcs */
 
 __global__
-void kernel_convsp(float* locs, float* data, float* weight, float* bias, 
-	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
-	float radius, float* kernel_size, float* dilation, int dis_norm, int kernel_fn, 
-	float* out, float* ddata, float* dweight, int block_size, int num_blocks)
+void kernel_convsp(
+		const float* locs, 
+		const float* data, 
+		const float* weight, 
+		const float* bias, 
+		const int batch_size, 
+		const int N, 
+		const int nchannels, 
+		const int ndims, 
+		const int nkernels, 
+		const int ncells, 
+		const float radius, 
+		const float* kernel_size, 
+		const float* dilation, 
+		const int dis_norm, 
+		const int kernel_fn, 
+		float* out, 
+		float* ddata, 
+		float* dweight, 
+		const int block_size, 
+		const int num_blocks)
 {
 	extern __shared__ float shared_ptr[];
 
@@ -159,7 +176,7 @@ void kernel_convsp(float* locs, float* data, float* weight, float* bias,
 	int i, j;
 	for(i = th; i < nw*nchannels*ncells; i += blockDim.x)
 		ptr[i] = weight[i + startw*nchannels*ncells];
-	float* weight_p = ptr;
+	const float* weight_p = ptr;
 	ptr += nw*nchannels*ncells;
 
 	// Copy over the kernel_size and dilation.
@@ -168,8 +185,8 @@ void kernel_convsp(float* locs, float* data, float* weight, float* bias,
 		ptr[i] = kernel_size[i];
 		ptr[ndims + i] = dilation[i];
 	}
-	float* kernel_size_p = ptr;
-	float* dilation_p = ptr + ndims;
+	const float* kernel_size_p = ptr;
+	const float* dilation_p = ptr + ndims;
 	ptr += 2*ndims;
 
 	// Alocate space for dweight only if we're going backwards. Only copy
@@ -186,7 +203,7 @@ void kernel_convsp(float* locs, float* data, float* weight, float* bias,
 	// Next we're going to copy over particle data. Since we're computing for 2 blocks,
 	// make sure to copy the data over for each pointer sequentially.
 	// Start with locs.
-	float* locs_p = ptr;
+	const float* locs_p = ptr;
 	for(i = th; i < ni*ndims; i += blockDim.x)
 		ptr[i] = locs[b*N*ndims + starti*ndims + i];
 	ptr += ni*ndims;
@@ -195,7 +212,7 @@ void kernel_convsp(float* locs, float* data, float* weight, float* bias,
 	ptr += nj*ndims;
 
 	// Copy over data.
-	float* data_p = ptr;
+	const float* data_p = ptr;
 	for(i = th; i < ni*nchannels; i += blockDim.x)
 		ptr[i] = data[b*N*nchannels + starti*nchannels + i];
 	ptr += ni*nchannels;
@@ -288,10 +305,27 @@ void kernel_convsp(float* locs, float* data, float* weight, float* bias,
 			atomicAdd(dweight + startw*nchannels*ncells + i, dweight_p[i]);
 	}
 }
-int cuda_convsp(float* locs, float* data, float* weight, float* bias, 
-	int batch_size, int N, int nchannels, int ndims, int nkernels, int ncells, 
-	float radius, float* kernel_size, float* dilation, int dis_norm, int kernel_fn, 
-	float* out, float* ddata, float* dweight, cudaStream_t stream, size_t nshared_device_mem)
+int cuda_convsp(
+		const float* locs, 
+		const float* data, 
+		const float* weight, 
+		const float* bias, 
+		const int batch_size, 
+		const int N, 
+		const int nchannels, 
+		const int ndims, 
+		const int nkernels, 
+		const int ncells, 
+		const float radius, 
+		const float* kernel_size, 
+		const float* dilation, 
+		const int dis_norm, 
+		const int kernel_fn, 
+		float* out, 
+		float* ddata, 
+		float* dweight, 
+		cudaStream_t stream, 
+		const size_t nshared_device_mem)
 {
 	size_t fixedmem = 0;
 	int nweight_blocks;
@@ -339,10 +373,28 @@ int cuda_convsp(float* locs, float* data, float* weight, float* bias,
 
 
 __global__
-void kernel_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
-    float* poses, float* scales, int M, int pose_len, float* sdfs, float* sdf_offsets, 
-    float* sdf_shapes, float* weight, float* bias, int nkernels, int ncells, 
-    float* kernel_size, float* dilation, float max_distance, float* out, float* dweight)
+void kernel_convsdf(
+	const float* locs, 
+	const int batch_size, 
+	const int N, 
+	const int ndims, 
+	const float* idxs,
+    const float* poses, 
+    const float* scales, 
+    const int M, 
+    const int pose_len, 
+    const float* sdfs, 
+    const float* sdf_offsets, 
+    const float* sdf_shapes, 
+    const float* weight, 
+    const float* bias, 
+    const int nkernels, 
+    const int ncells, 
+    const float* kernel_size, 
+    const float* dilation, 
+    const float max_distance, 
+    float* out, 
+    float* dweight)
 {
     int _isdf_cache[64];
     float _fsdf_cache[64];
@@ -380,10 +432,28 @@ void kernel_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
         free(fsdf_cache);
     }
 }
-int cuda_convsdf(float* locs, int batch_size, int N, int ndims, float* idxs,
-    float* poses, float* scales, int M, int pose_len, float* sdfs, float* sdf_offsets, 
-    float* sdf_shapes, float* weight, float* bias, int nkernels, int ncells, 
-    float* kernel_size, float* dilation, float max_distance, float* out, float* dweight, 
+int cuda_convsdf(
+	const float* locs, 
+	const int batch_size, 
+	const int N, 
+	const int ndims, 
+	const float* idxs,
+    const float* poses, 
+    const float* scales, 
+    const int M, 
+    const int pose_len, 
+    const float* sdfs, 
+    const float* sdf_offsets, 
+    const float* sdf_shapes, 
+    const float* weight, 
+    const float* bias, 
+    const int nkernels, 
+    const int ncells, 
+    const float* kernel_size, 
+    const float* dilation, 
+    const float max_distance, 
+    float* out, 
+    float* dweight, 
     cudaStream_t stream)
 {
     int nops = batch_size*N*nkernels;

@@ -18,24 +18,24 @@ size_t spnc_get_shared_mem_size(int device)
 }
 
 
-int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t, 
-    THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
-    THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, int dis_norm, int kernel_fn, 
-    THCudaTensor* out_t, size_t nshared_device_mem)
+int spnc_convsp_forward(const THCudaTensor* locs_t, const THCudaTensor* data_t, 
+    const THCudaTensor* weight_t, const THCudaTensor* bias_t, const float radius, 
+    const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, const int dis_norm, 
+    const int kernel_fn, THCudaTensor* out_t, const size_t nshared_device_mem)
 {
 
-    float* locs = THCudaTensor_data(state, locs_t);
-    float* data = THCudaTensor_data(state, data_t);
-    float* weight = THCudaTensor_data(state, weight_t);
-    float* bias = THCudaTensor_data(state, bias_t);
-    int batch_size = locs_t->size[0];
-    int N = locs_t->size[1];
-    int nchannels = data_t->size[2];
-    int ndims = locs_t->size[2];
-    int nkernels = weight_t->size[0];
-    int ncells = weight_t->size[2];
-    float* kernel_size = THCudaTensor_data(state, kernel_size_t);
-    float* dilation = THCudaTensor_data(state, dilation_t);
+    const float* locs = THCudaTensor_data(state, locs_t);
+    const float* data = THCudaTensor_data(state, data_t);
+    const float* weight = THCudaTensor_data(state, weight_t);
+    const float* bias = THCudaTensor_data(state, bias_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int nchannels = data_t->size[2];
+    const int ndims = locs_t->size[2];
+    const int nkernels = weight_t->size[0];
+    const int ncells = weight_t->size[2];
+    const float* kernel_size = THCudaTensor_data(state, kernel_size_t);
+    const float* dilation = THCudaTensor_data(state, dilation_t);
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
@@ -45,26 +45,26 @@ int spnc_convsp_forward(THCudaTensor* locs_t, THCudaTensor* data_t,
 
 }
 
-int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t, 
-    THCudaTensor* weight_t, THCudaTensor* bias_t, float radius, 
-    THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, int dis_norm, int kernel_fn, 
-    THCudaTensor* out_t, THCudaTensor* ddata_t, THCudaTensor* dweight_t, 
-    size_t nshared_device_mem)
+int spnc_convsp_backward(const THCudaTensor* locs_t, const THCudaTensor* data_t, 
+    const THCudaTensor* weight_t, const THCudaTensor* bias_t, const float radius, 
+    const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, const int dis_norm, 
+    const int kernel_fn, THCudaTensor* out_t, THCudaTensor* ddata_t, THCudaTensor* dweight_t, 
+    const size_t nshared_device_mem)
 {
-    float* locs = THCudaTensor_data(state, locs_t);
-    float* data = THCudaTensor_data(state, data_t);
-    float* weight = THCudaTensor_data(state, weight_t);
-    float* bias = THCudaTensor_data(state, bias_t);
+    const float* locs = THCudaTensor_data(state, locs_t);
+    const float* data = THCudaTensor_data(state, data_t);
+    const float* weight = THCudaTensor_data(state, weight_t);
+    const float* bias = THCudaTensor_data(state, bias_t);
     float* ddata = THCudaTensor_data(state, ddata_t);
     float* dweight = THCudaTensor_data(state, dweight_t);
-    int batch_size = locs_t->size[0];
-    int N = locs_t->size[1];
-    int nchannels = data_t->size[2];
-    int ndims = locs_t->size[2];
-    int nkernels = weight_t->size[0];
-    int ncells = weight_t->size[2];
-    float* kernel_size = THCudaTensor_data(state, kernel_size_t);
-    float* dilation = THCudaTensor_data(state, dilation_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int nchannels = data_t->size[2];
+    const int ndims = locs_t->size[2];
+    const int nkernels = weight_t->size[0];
+    const int ncells = weight_t->size[2];
+    const float* kernel_size = THCudaTensor_data(state, kernel_size_t);
+    const float* dilation = THCudaTensor_data(state, dilation_t);
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
@@ -73,30 +73,31 @@ int spnc_convsp_backward(THCudaTensor* locs_t, THCudaTensor* data_t,
         dweight, stream, nshared_device_mem);
 }
 
-int spnc_convsdf_forward(THCudaTensor* locs_t, THCudaTensor* idxs_t, THCudaTensor* poses_t, 
-    THCudaTensor* scales_t, THCudaTensor* sdfs_t, THCudaTensor* sdf_offsets_t,
-    THCudaTensor* sdf_shapes_t, THCudaTensor* weight_t, THCudaTensor* bias_t, 
-    THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, float max_distance,
-    THCudaTensor* out_t)
+int spnc_convsdf_forward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t, 
+    const THCudaTensor* poses_t, const THCudaTensor* scales_t, const THCudaTensor* sdfs_t, 
+    const THCudaTensor* sdf_offsets_t, const THCudaTensor* sdf_shapes_t, 
+    const THCudaTensor* weight_t, const THCudaTensor* bias_t, 
+    const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, 
+    const float max_distance, THCudaTensor* out_t)
 {
-    float* locs = THCudaTensor_data(state, locs_t);
-    float* idxs = THCudaTensor_data(state, idxs_t);
-    float* poses = THCudaTensor_data(state, poses_t);
-    float* scales = THCudaTensor_data(state, scales_t);
-    float* sdfs = THCudaTensor_data(state, sdfs_t);
-    float* sdf_offsets = THCudaTensor_data(state, sdf_offsets_t);
-    float* sdf_shapes = THCudaTensor_data(state, sdf_shapes_t);
-    float* weight = THCudaTensor_data(state, weight_t);
-    float* bias = THCudaTensor_data(state, bias_t); 
-    int batch_size = locs_t->size[0];
-    int N = locs_t->size[1];
-    int ndims = locs_t->size[2];
-    int M = idxs_t->size[1];
-    int pose_len = poses_t->size[2];
-    int nkernels = weight_t->size[0];
-    int ncells = weight_t->size[1];
-    float* kernel_size = THCudaTensor_data(state, kernel_size_t);
-    float* dilation = THCudaTensor_data(state, dilation_t);
+    const float* locs = THCudaTensor_data(state, locs_t);
+    const float* idxs = THCudaTensor_data(state, idxs_t);
+    const float* poses = THCudaTensor_data(state, poses_t);
+    const float* scales = THCudaTensor_data(state, scales_t);
+    const float* sdfs = THCudaTensor_data(state, sdfs_t);
+    const float* sdf_offsets = THCudaTensor_data(state, sdf_offsets_t);
+    const float* sdf_shapes = THCudaTensor_data(state, sdf_shapes_t);
+    const float* weight = THCudaTensor_data(state, weight_t);
+    const float* bias = THCudaTensor_data(state, bias_t); 
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int ndims = locs_t->size[2];
+    const int M = idxs_t->size[1];
+    const int pose_len = poses_t->size[2];
+    const int nkernels = weight_t->size[0];
+    const int ncells = weight_t->size[1];
+    const float* kernel_size = THCudaTensor_data(state, kernel_size_t);
+    const float* dilation = THCudaTensor_data(state, dilation_t);
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
@@ -105,31 +106,32 @@ int spnc_convsdf_forward(THCudaTensor* locs_t, THCudaTensor* idxs_t, THCudaTenso
         max_distance, out, NULL, stream);
 }
 
-int spnc_convsdf_backward(THCudaTensor* locs_t, THCudaTensor* idxs_t, THCudaTensor* poses_t, 
-    THCudaTensor* scales_t, THCudaTensor* sdfs_t, THCudaTensor* sdf_offsets_t,
-    THCudaTensor* sdf_shapes_t, THCudaTensor* weight_t, THCudaTensor* bias_t, 
-    THCudaTensor* kernel_size_t, THCudaTensor* dilation_t, float max_distance,
-    THCudaTensor* out_t, THCudaTensor* dweight_t)
+int spnc_convsdf_backward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t, 
+    const THCudaTensor* poses_t, const THCudaTensor* scales_t, const THCudaTensor* sdfs_t, 
+    const THCudaTensor* sdf_offsets_t, const THCudaTensor* sdf_shapes_t, 
+    const THCudaTensor* weight_t, const THCudaTensor* bias_t, 
+    const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, 
+    const float max_distance, THCudaTensor* out_t, THCudaTensor* dweight_t)
 {
-    float* locs = THCudaTensor_data(state, locs_t);
-    float* idxs = THCudaTensor_data(state, idxs_t);
-    float* poses = THCudaTensor_data(state, poses_t);
-    float* scales = THCudaTensor_data(state, scales_t);
-    float* sdfs = THCudaTensor_data(state, sdfs_t);
-    float* sdf_offsets = THCudaTensor_data(state, sdf_offsets_t);
-    float* sdf_shapes = THCudaTensor_data(state, sdf_shapes_t);
-    float* weight = THCudaTensor_data(state, weight_t);
-    float* bias = THCudaTensor_data(state, bias_t); 
+    const float* locs = THCudaTensor_data(state, locs_t);
+    const float* idxs = THCudaTensor_data(state, idxs_t);
+    const float* poses = THCudaTensor_data(state, poses_t);
+    const float* scales = THCudaTensor_data(state, scales_t);
+    const float* sdfs = THCudaTensor_data(state, sdfs_t);
+    const float* sdf_offsets = THCudaTensor_data(state, sdf_offsets_t);
+    const float* sdf_shapes = THCudaTensor_data(state, sdf_shapes_t);
+    const float* weight = THCudaTensor_data(state, weight_t);
+    const float* bias = THCudaTensor_data(state, bias_t); 
     float* dweight = THCudaTensor_data(state, dweight_t); 
-    int batch_size = locs_t->size[0];
-    int N = locs_t->size[1];
-    int ndims = locs_t->size[2];
-    int M = idxs_t->size[1];
-    int pose_len = poses_t->size[2];
-    int nkernels = weight_t->size[0];
-    int ncells = weight_t->size[1];
-    float* kernel_size = THCudaTensor_data(state, kernel_size_t);
-    float* dilation = THCudaTensor_data(state, dilation_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int ndims = locs_t->size[2];
+    const int M = idxs_t->size[1];
+    const int pose_len = poses_t->size[2];
+    const int nkernels = weight_t->size[0];
+    const int ncells = weight_t->size[1];
+    const float* kernel_size = THCudaTensor_data(state, kernel_size_t);
+    const float* dilation = THCudaTensor_data(state, dilation_t);
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
