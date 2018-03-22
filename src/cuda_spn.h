@@ -24,3 +24,18 @@ int spnc_convsdf_backward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t
     const THCudaTensor* weight_t, const THCudaTensor* bias_t, 
     const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, 
     const float max_distance, THCudaTensor* out_t, THCudaTensor* dweight_t);
+
+int spnc_compute_collisions(THCudaTensor* locs_t, 
+                           THCudaTensor* data_t, 
+                           THCudaTensor* lower_bounds_t,
+                           THCudaTensor* grid_dims_t,
+                           THCudaTensor* cellIDs_t,
+                           THCudaTensor* idxs_t,
+                           THCudaTensor* cellStarts_t,
+                           THCudaTensor* cellEnds_t,
+                           THCudaTensor* collisions_t,
+                           THCudaTensor* buffer_t,
+                           const float cellEdge,
+                           const float radius);
+
+size_t spnc_get_radixsort_buffer_size(void);

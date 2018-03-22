@@ -27,3 +27,18 @@ int spnc_convsdf_backward(const void* locs_t, const void* idxs_t,
     const void* weight_t, const void* bias_t, 
     const void* kernel_size_t, const void* dilation_t, 
     const float max_distance, void* out_t, void* dweight_t);
+
+int spnc_compute_collisions(void* locs_t, 
+                           void* data_t, 
+                           void* lower_bounds_t,
+                           void* grid_dims_t,
+                           void* cellIDs_t,
+                           void* idxs_t,
+                           void* cellStarts_t,
+                           void* cellEnds_t,
+                           void* collisions_t,
+                           void* buffer_t,
+                           const float cellEdge,
+                           const float radius);
+
+size_t spnc_get_radixsort_buffer_size(void);

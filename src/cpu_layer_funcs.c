@@ -196,3 +196,135 @@ int cpu_convsdf(const float* locs, const int batch_size, const int N, const int 
     free(fsdf_cache);
     return 1;
 }
+
+
+int spn_compute_collisions(THFloatTensor* locs_t, 
+                           THFloatTensor* data_t, 
+                           THFloatTensor* lower_bounds_t,
+                           THFloatTensor* grid_dims_t,
+                           THFloatTensor* cellIDs_t,
+                           THFloatTensor* idxs_t,
+                           THFloatTensor* cellStarts_t,
+                           THFloatTensor* cellEnds_t,
+                           THFloatTensor* collisions_t,
+                           const float cellEdge,
+                           const float radius)
+{
+    float* locs = THFloatTensor_data(locs_t);
+    float* data = THFloatTensor_data(data_t);
+    float* low = THFloatTensor_data(lower_bounds_t);
+    float* grid_dims = THFloatTensor_data(grid_dims_t);
+    float* cellIDs = THFloatTensor_data(cellIDs_t);
+    float* idxs = THFloatTensor_data(idxs_t);
+    float* cellStarts = THFloatTensor_data(cellStarts_t);
+    float* cellEnds = THFloatTensor_data(cellEnds_t);
+    float* collisions = THFloatTensor_data(collisions_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int ndims = locs_t->size[2];
+    const int nchannels = data_t->size[2];
+    const int max_collisions = collisions_t->size[2];
+    const int ncells = cellStarts_t->size[1];
+
+    int b, i, j, d;
+
+    // Mark each particle with it's cell ID.
+    for(b = 0; b < batch_size; ++b)
+    {
+        for(i = 0; i < N; ++i)
+        {
+            int hash = 0;
+            for(d = 0; d < ndims; ++d)
+                hash += partial_grid_hash(
+                    loc2grid(locs[b*N*ndims + i*ndims + d], low[b*ndims + d], cellEdge), 
+                    grid_dims[b*ndims + d], d);
+            cellIDs[b*N + i] = hash;
+            idxs[b*N + i] = i;
+        }
+    }
+
+    // Sort the particles by cell ID.
+    for(b = 0; b < batch_size; ++b)
+    {
+        // Going to use slow selection sort because it's easy to implement.
+        for(i = 0; i < N; ++i)
+        {
+            int minID = cellIDs[b*N + i];
+            int minidx = i;
+            for(j = i + 1; j < N; ++j)
+            {
+                // Rather than swapping in place now, do it later for efficiency.
+                if(cellIDs[b*N + j] < minID)
+                {
+                    minID = cellIDs[b*N + j];
+                    minidx = j;
+                }
+            }
+
+            if(minidx != i)
+            {
+                swapf(locs + b*N*ndims + i*ndims, locs + b*N*ndims + minidx*ndims, ndims);
+                swapf(data + b*N*nchannels + i*nchannels, 
+                    data + b*N*nchannels + minidx*nchannels, nchannels);
+                swapf(cellIDs + b*N + i, cellIDs + b*N + minidx, 1);
+                swapf(idxs + b*N + i, idxs + b*N + minidx, 1);
+            }
+        }
+    }
+
+    // Create the cell start and end lists.
+    for(b = 0; b < batch_size; ++b)
+    {
+        for(i = 0; i < N; ++i)
+        {
+            int c = cellIDs[b*N + i];
+            if (i == 0)
+            {
+                cellStarts[b*ncells + c] = i;
+            }
+            else
+            {
+                int p = cellIDs[b*N + i-1];
+
+                if (c != p)
+                {
+                    cellStarts[b*ncells + c] = i;
+                    cellEnds[b*ncells + p] = i;
+                }
+            }
+            
+            if (i == N-1)
+            {
+                cellEnds[b*ncells + c] = i+1;
+            }
+        }
+    }
+
+    // Make collision lists.
+    for(b = 0; b < batch_size; ++b)
+    {
+        for(i = 0; i < N; ++i)
+        {
+            compute_collisions(
+                locs,
+                cellStarts,
+                cellEnds,
+                batch_size,
+                N,
+                ndims,
+                ncells,
+                low,
+                grid_dims,
+                cellEdge,
+                radius*radius,
+                collisions,
+                max_collisions,
+                b,
+                i);
+        }
+    }
+
+    return 1;
+}
+
+ 

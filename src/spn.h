@@ -28,3 +28,15 @@ int spn_convsdf_backward(const THFloatTensor* locs_t, const THFloatTensor* idxs_
     const THFloatTensor* weight_t, const THFloatTensor* bias_t, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const float max_distance, THFloatTensor* out_t, THFloatTensor* dweight_t);
+
+int spn_compute_collisions(THFloatTensor* locs_t, 
+                           THFloatTensor* data_t, 
+                           THFloatTensor* lower_bounds_t,
+                           THFloatTensor* grid_dims_t,
+                           THFloatTensor* cellIDs_t,
+                           THFloatTensor* idxs_t,
+                           THFloatTensor* cellStarts_t,
+                           THFloatTensor* cellEnds_t,
+                           THFloatTensor* collisions_t,
+                           const float cellEdge,
+                           const float radius);

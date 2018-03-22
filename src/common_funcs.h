@@ -6,7 +6,7 @@ extern "C" {
 
 #ifdef CUDA
 	#define DEVICE_FUNC __device__ inline
-	#define GLOBAL_FUNC __global__ inline
+	#define GLOBAL_FUNC __device__ __host__ inline
 #else
 	#define DEVICE_FUNC inline
 	#define GLOBAL_FUNC inline
@@ -39,6 +39,45 @@ float kernel_w(const float d, const float H, const int fn)
 		return -1;
 	}
 	return KERNEL_W(d, H, fn);
+}
+
+
+DEVICE_FUNC
+void swapf(float* a, float* b, int size)
+{
+	float f;
+	int i;
+	for(i = 0; i < size; ++i)
+	{
+		f = a[i];
+		a[i] = b[i];
+		b[i] = f;
+	}
+}
+
+
+GLOBAL_FUNC
+int loc2grid(float coord, float low_coord, float cellEdge)
+{
+	int ret = (coord - low_coord)/cellEdge;
+	if(ret >= 0)
+		return ret;
+	else
+		return 0;
+}
+
+
+GLOBAL_FUNC
+int partial_grid_hash(int grid_coord, int grid_dim, int dim)
+{
+	if(grid_coord >= grid_dim)
+		grid_coord = grid_dim - 1;
+	int dd;
+	int c = grid_coord;
+    c &= (grid_dim - 1);
+    for(dd = 0; dd < dim; ++dd)
+        c *= grid_dim;
+    return c;
 }
 
 
@@ -556,6 +595,112 @@ void compute_sdf_kernel_cells(
 		*out_ptr += bias[outk];
 
 }
+
+
+/** Compute the neighbors for a given particle in the list from a pre-computed hashgrid.
+This function assumes that the size of an edge of a cell in the hashgrid is at least radius,
+where radius is the maximum distance between any two locations to be considered neighbors. 
+Furthermore it assumes that the locations have already been ordered according to the 
+hashgrid, with all locations in the same grid cell contiguous in the locations array.
+The arguments are:
+	-locs (batch_size X N X dims) the cartesian coordinates of every query location.
+	-cellStarts (batch_size X ncells) the index of the location in each given hashgrid cell
+				with the smallest index.
+	-cellEnds (batch_size X ncells) 1+ the maximum index of all locations in each hashgrid
+			  cell.
+	-batch_size: the size of the batch.
+	-N: the number of particles in each batch.
+	-ndims: the cardinality of the cartesian coordinate space.
+	-ncells: the total number of hashgrid cells, equal to max_grid_dimension^dims.
+	-low: (batch_size X dims) the cartesian coordinate of the lowest value for each hashgrid.
+	-grid_dims: (batch_size X dims) the number of cells in each dimension for each hashgrid.
+			    Note that the product of these values does not necessarily need to equal
+			    ncells. grid_dims is used when indexing into cellStarts/cellEnds for each
+			    specific hashgrid, but ncells is used when computing the stride from batch
+			    to batch. cellStarts and cellEnds should have size batch_size*ncells, but
+			    within each batch there may be unused values. ncells must always be at least
+			    the product of grid_dims, but may be larger.
+    -cellEdge: the size of one size of a cell in the hashgrids (all hashgrids must have the
+    		   same cellEdge). Must be at least as large as radius.
+	-radius2: the radius squared, which is the maximum distance between any two particles 
+			  for them to be considered neighbors.
+	-collisions: (batch_size X N X max_collisions) the list of location indices that are
+				 neighbors for every location. Not all locations will have max_collisions
+				 neighbors, so the list for each location is terminated with a -1.
+	-b: the batch to compute neighbors for.
+	-n: the location to compute neighbors for.
+**/
+DEVICE_FUNC
+void compute_collisions(
+	const float* locs,
+	const float* cellStarts,
+	const float* cellEnds,
+	const int batch_size,
+	const int N,
+	const int ndims,
+	const int ncells,
+	const float* low,
+	const float* grid_dims,
+	const float cellEdge,
+	const float radius2,
+	float* collisions,
+	const int max_collisions,
+	const int b,
+	const int n)
+{
+	int ncollisions = 0;
+	int grid_coord[MAX_CARTESIAN_DIM];
+	int offset[MAX_CARTESIAN_DIM];
+	int k, i;
+	for(k = 0; k < ndims; ++k)
+	{
+		grid_coord[k] = loc2grid(locs[b*N*ndims + n*ndims + k], low[b*ndims + k], cellEdge);
+		offset[k] = -1;
+	}
+	while(offset[ndims-1] <= 1 && ncollisions < max_collisions)
+	{
+		int inbounds = 1;
+		int cellID = 0;
+		for(k = 0; k < ndims && inbounds; ++k)
+		{
+			int coord = grid_coord[k] + offset[k];
+			if(coord < 0 || coord >= grid_dims[b*ndims + k])
+				inbounds = 0;
+			else
+				cellID += partial_grid_hash(coord, grid_dims[b*ndims + k], k);
+		}
+
+		if(inbounds)
+		{
+			for(i = cellStarts[b*ncells + cellID]; i < cellEnds[b*ncells + cellID] &&
+					ncollisions < max_collisions; ++i)
+			{
+				float d = 0.0f;
+				for(k = 0; k < ndims; ++k)
+				{
+					float nr = locs[b*N*ndims + n*ndims + k] - locs[b*N*ndims + i*ndims + k];
+					d += nr*nr;
+				}
+				if(d < radius2)
+				{
+					collisions[b*N*max_collisions + n*max_collisions + ncollisions] = i;
+					++ncollisions;
+				}
+			}
+		}
+
+		++offset[0];
+		for(k = 0; k < ndims - 1 && offset[k] > 1; ++k)
+		{
+			offset[k] = -1;
+			++offset[k+1];
+		}
+	}
+
+	if(ncollisions < max_collisions)
+		collisions[b*N*max_collisions + n*max_collisions + ncollisions] = -1;
+}
+
 
 #ifdef __cplusplus
 }

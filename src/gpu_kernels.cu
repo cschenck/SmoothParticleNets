@@ -1,12 +1,14 @@
 
 #ifdef __cplusplus
-extern "C" {
+//extern "C" {
 #endif
 
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+
+#include "../external/cub-1.3.2/cub/cub.cuh"
 
 #define CUDA
 #include "common_funcs.h"
@@ -223,7 +225,248 @@ int cuda_convsdf(
 }
 
 
-#ifdef __cplusplus
+
+// Functions for the ParticleCollision layer.
+__global__
+void kernel_compute_cellIDs(
+    const float* locs,
+    const float* low,
+    const float* grid_dims,
+    uint32_t* cellIDs,
+    float* idxs,
+    const int batch_size,
+    const int N,
+    const int ndims,
+    const float cellEdge,
+    uint32_t* maxhash)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int i, d;
+    for(i = index; i < N*batch_size; i += stride)
+    {
+        int b = i/N;
+        int n = i%N;
+        int hash = 0;
+        for(d = 0; d < ndims; ++d)
+            hash += partial_grid_hash(
+                loc2grid(locs[b*N*ndims + n*ndims + d], low[b*ndims + d], cellEdge), 
+                grid_dims[b*ndims + d], d);
+        cellIDs[i] = hash;
+        idxs[i] = n;
+
+        if(n == 0)
+        {
+            uint32_t mh = 0;
+            for(d = 0; d < ndims; ++d)
+                mh += partial_grid_hash(grid_dims[b*ndims + d] - 1, 
+                    grid_dims[b*ndims + d], d);
+            atomicMax(maxhash, mh);
+        }
+    }
 }
+__global__
+void kernel_reorder_data(
+    const float* locs,
+    const float* data,
+    const float* idxs,
+    float* nlocs,
+    float* ndata,
+    const int batch_size,
+    const int N,
+    const int ndims,
+    const int nchannels)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int i, d;
+    for(i = index; i < N*batch_size; i += stride)
+    {
+        int b = i/N;
+        int nn = i%N;
+        int on = idxs[i];
+        for(d = 0; d < ndims; ++d)
+            nlocs[b*N*ndims + nn*ndims + d] = locs[b*N*ndims + on*ndims + d];
+        for(d = 0; d < nchannels; ++d)
+            ndata[b*N*nchannels + nn*nchannels + d] = data[b*N*nchannels + on*nchannels + d];
+    }
+}
+__global__
+void kernel_fill_cells(
+    const uint32_t* cellIDs,
+    float* cellStarts,
+    float* cellEnds,
+    const int batch_size,
+    const int N,
+    const int ncells)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int i;
+    for(i = index; i < N*batch_size; i += stride)
+    {
+        int b = i/N;
+        int n = i%N;
+        int c = cellIDs[i];
+        if(n == 0)
+        {
+            cellStarts[b*ncells + c] = n;
+        }
+        else
+        {
+            int p = cellIDs[b*N + n-1];
+
+            if (c != p)
+            {
+                cellStarts[b*ncells + c] = n;
+                cellEnds[b*ncells + p] = n;
+            }
+        }
+        
+        if(n == N-1)
+        {
+            cellEnds[b*ncells + c] = n+1;
+        }
+    }
+}
+__global__
+void kernel_compute_collisions(
+    const float* locs,
+    const float* cellStarts,
+    const float* cellEnds,
+    const int batch_size,
+    const int N,
+    const int ndims,
+    const int ncells,
+    const float* low,
+    const float* grid_dims,
+    const float cellEdge,
+    const float radius2,
+    float* collisions,
+    const int max_collisions)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int i;
+    for(i = index; i < N*batch_size; i += stride)
+    {
+        int b = i/N;
+        int n = i%N;
+        compute_collisions(
+            locs,
+            cellStarts,
+            cellEnds,
+            batch_size,
+            N,
+            ndims,
+            ncells,
+            low,
+            grid_dims,
+            cellEdge,
+            radius2,
+            collisions,
+            max_collisions,
+            b,
+            n);
+    }
+}
+int cuda_compute_collisions(
+    float* locs,
+    float* data,
+    const float* low,
+    const float* grid_dims,
+    float* cellIDs,
+    float* idxs,
+    float* cellStarts,
+    float* cellEnds,
+    float* collisions,
+    float* buffer,
+    const int batch_size,
+    const int N,
+    const int ndims,
+    const int nchannels,
+    const int max_collisions,
+    const int ncells,
+    const float cellEdge,
+    const float radius,
+    cudaStream_t stream)
+{
+    uint32_t* cellIDsi = (uint32_t*) cellIDs;
+    int b;
+
+    int nops = batch_size*N;
+    int numBlocks = ceil(nops * (1.0/256));
+    dim3 blocks(numBlocks);
+    dim3 threads(256); 
+    kernel_compute_cellIDs<<<nops, numBlocks, 0, stream>>>(locs, low, grid_dims, cellIDsi,
+        idxs, batch_size, N, ndims, cellEdge, (uint32_t*)buffer);
+    uint32_t maxhash;
+    cudaMemcpy(&maxhash, buffer, sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    uint32_t numBits = (uint32_t)ceil(log2((float)maxhash));
+
+    // Sort the particles by cell ID.
+    for(b = 0; b < batch_size; ++b)
+    {
+        cub::DoubleBuffer<uint32_t> d_keys(cellIDsi + b*N, cellIDsi + batch_size*N);
+        cub::DoubleBuffer<float> d_values(idxs + b*N, cellIDs + (1 + batch_size)*N);
+
+        size_t sortTempSize;
+        cub::DeviceRadixSort::SortPairs(buffer, sortTempSize, d_keys, d_values, N, 0, 
+            numBits, stream);
+        if (d_keys.Current() != cellIDsi + b*N)
+            cudaMemcpyAsync(cellIDsi + b*N, d_keys.Current(), 
+                sizeof(uint32_t)*N, cudaMemcpyDeviceToDevice);
+
+        if (d_values.Current() != idxs + b*N)
+            cudaMemcpyAsync(idxs + b*N, d_values.Current(), sizeof(float)*N, 
+                cudaMemcpyDeviceToDevice);
+    }
+
+    // Re-order locs and data.
+    kernel_reorder_data<<<nops, numBlocks, 0, stream>>>(locs, data, idxs, buffer, 
+        buffer + batch_size*N*ndims, batch_size, N, ndims, nchannels);
+    cudaMemcpyAsync(locs, buffer, sizeof(float)*N*batch_size*ndims, 
+        cudaMemcpyDeviceToDevice);
+    cudaMemcpyAsync(data, buffer + batch_size*N*ndims, sizeof(float)*N*batch_size*nchannels, 
+        cudaMemcpyDeviceToDevice);
+
+    // Create the cell start and end lists.
+    kernel_fill_cells<<<nops, numBlocks, 0, stream>>>(cellIDsi, cellStarts, cellEnds, 
+        batch_size, N, ncells);
+
+    // Make collision lists.
+    kernel_compute_collisions<<<nops, numBlocks, 0, stream>>>(
+        locs,
+        cellStarts,
+        cellEnds,
+        batch_size,
+        N,
+        ndims,
+        ncells,
+        low,
+        grid_dims,
+        cellEdge,
+        radius*radius,
+        collisions,
+        max_collisions);
+
+    cudaDeviceSynchronize();
+    return PrintOnCudaError("compute_collisions");
+}
+
+size_t get_radixsort_buffer_size(cudaStream_t stream)
+{
+    cub::DoubleBuffer<int> d_keys(NULL, NULL);
+    cub::DoubleBuffer<float> d_values(NULL, NULL);
+
+    size_t sortTempSize;
+    cub::DeviceRadixSort::SortPairs(NULL, sortTempSize, d_keys, d_values, 1, 0, 
+        1, stream);
+    return sortTempSize;
+}
+
+
+#ifdef __cplusplus
+//}
 #endif
 

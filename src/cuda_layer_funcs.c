@@ -140,43 +140,91 @@ int spnc_convsdf_backward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t
         max_distance, out, dweight, stream);
 }
 
+
+int spnc_compute_collisions(THCudaTensor* locs_t, 
+                           THCudaTensor* data_t, 
+                           THCudaTensor* lower_bounds_t,
+                           THCudaTensor* grid_dims_t,
+                           THCudaTensor* cellIDs_t,
+                           THCudaTensor* idxs_t,
+                           THCudaTensor* cellStarts_t,
+                           THCudaTensor* cellEnds_t,
+                           THCudaTensor* collisions_t,
+                           THCudaTensor* buffer_t,
+                           const float cellEdge,
+                           const float radius)
+{
+    float* locs = THCudaTensor_data(state, locs_t);
+    float* data = THCudaTensor_data(state, data_t);
+    float* low = THCudaTensor_data(state, lower_bounds_t);
+    float* grid_dims = THCudaTensor_data(state, grid_dims_t);
+    float* cellIDs = THCudaTensor_data(state, cellIDs_t);
+    float* idxs = THCudaTensor_data(state, idxs_t);
+    float* cellStarts = THCudaTensor_data(state, cellStarts_t);
+    float* cellEnds = THCudaTensor_data(state, cellEnds_t);
+    float* collisions = THCudaTensor_data(state, collisions_t);
+    float* buffer = THCudaTensor_data(state, buffer_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int ndims = locs_t->size[2];
+    const int nchannels = data_t->size[2];
+    const int max_collisions = collisions_t->size[2];
+    const int ncells = cellStarts_t->size[1];
+    cudaStream_t stream = THCState_getCurrentStream(state);
+
+    return cuda_compute_collisions(locs, data, low, grid_dims, cellIDs, idxs, cellStarts,
+        cellEnds, collisions, buffer, batch_size, N, ndims, nchannels, max_collisions, 
+        ncells, cellEdge, radius, stream);
+}
+
+size_t spnc_get_radixsort_buffer_size(void)
+{
+    cudaStream_t stream = THCState_getCurrentStream(state);
+    return get_radixsort_buffer_size(stream);
+}
+
+
 #else
 
-int spnc_convsp_forward(void* locs_t, void* data_t, void* density_t, 
-    void* weight_t, void* bias_t,float radius, void* kernel_size_t, 
-    void* dilation_t, void* out_t)
+int spnc_convsp_forward(const void* locs_t, const void* data_t, 
+    const void* weight_t, const void* bias_t, const float radius, 
+    const void* kernel_size_t, const void* dilation_t, const int dis_norm, 
+    const int kernel_fn, void* out_t, const size_t nshared_device_mem)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");
     return 0;
 }
 
-int spnc_convsp_backward(void* locs_t, void* data_t, void* density_t, 
-    void* weight_t, void* bias_t,float radius, void* kernel_size_t, 
-    void* dilation_t, void* out_t, void* ddata_t,
-    void* dweight_t)
+int spnc_convsp_backward(const void* locs_t, const void* data_t, 
+    const void* weight_t, const void* bias_t, const float radius, 
+    const void* kernel_size_t, const void* dilation_t, const int dis_norm, 
+    const int kernel_fn, void* out_t, void* ddata_t, void* dweight_t, 
+    const size_t nshared_device_mem)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");
     return 0;
 }
 
-int spnc_convsdf_forward(void** locs_t, void** idxs_t, void** poses_t, 
-    void** scales_t, void** sdfs_t, void** sdf_offsets_t,
-    void** sdf_shapes_t, void** weight_t, void** bias_t, 
-    void** kernel_size_t, void** dilation_t, float max_distance,
-    void** out_t)
+int spnc_convsdf_forward(const void* locs_t, const void* idxs_t, 
+    const void* poses_t, const void* scales_t, const void* sdfs_t, 
+    const void* sdf_offsets_t, const void* sdf_shapes_t, 
+    const void* weight_t, const void* bias_t, 
+    const void* kernel_size_t, const void* dilation_t, 
+    const float max_distance, void* out_t)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");
     return 0;
 }
 
-int spnc_convsdf_backward(void** locs_t, void** idxs_t, void** poses_t, 
-    void** scales_t, void** sdfs_t, void** sdf_offsets_t,
-    void** sdf_shapes_t, void** weight_t, void** bias_t, 
-    void** kernel_size_t, void** dilation_t, float max_distance,
-    void** out_t, void** dweight_t)
+int spnc_convsdf_backward(const void* locs_t, const void* idxs_t, 
+    const void* poses_t, const void* scales_t, const void* sdfs_t, 
+    const void* sdf_offsets_t, const void* sdf_shapes_t, 
+    const void* weight_t, const void* bias_t, 
+    const void* kernel_size_t, const void* dilation_t, 
+    const float max_distance, void* out_t, void* dweight_t)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");
@@ -184,6 +232,31 @@ int spnc_convsdf_backward(void** locs_t, void** idxs_t, void** poses_t,
 }
 
 int spnc_get_shared_mem_size(int device)
+{
+    fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
+                     "Please recompile with the --with_cuda flag\n.");
+    return 0;
+}
+
+int spnc_compute_collisions(void* locs_t, 
+                           void* data_t, 
+                           void* lower_bounds_t,
+                           void* grid_dims_t,
+                           void* cellIDs_t,
+                           void* idxs_t,
+                           void* cellStarts_t,
+                           void* cellEnds_t,
+                           void* collisions_t,
+                           void* buffer_t,
+                           const float cellEdge,
+                           const float radius)
+{
+    fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
+                     "Please recompile with the --with_cuda flag\n.");
+    return 0;
+}
+
+size_t spnc_get_radixsort_buffer_size(void)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");

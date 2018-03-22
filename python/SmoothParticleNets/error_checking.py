@@ -34,7 +34,7 @@ def check_tensor_dims(t, name, dims):
     if len(s) != len(dims):
         raise ValueError("%s must be a %d-dimensional tensor." % (name, len(dims)))
     for i in range(len(dims)):
-        if s[i] != dims[i]:
+        if dims[i] >= 0 and s[i] != dims[i]:
             raise ValueError("The %dth dimension of %s must have size %d, not %d." 
             	% (i, name, dims[i], s[i]))
 

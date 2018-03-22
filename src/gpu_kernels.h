@@ -52,6 +52,29 @@ int cuda_convsdf(
 
 size_t GetSharedMemPerBlock(int device);
 
+int cuda_compute_collisions(
+    float* locs,
+    float* data,
+    const float* low,
+    const float* grid_dims,
+    float* cellIDs,
+    float* idxs,
+    float* cellStarts,
+    float* cellEnds,
+    float* collisions,
+    float* buffer,
+    const int batch_size,
+    const int N,
+    const int ndims,
+    const int nchannels,
+    const int max_collisions,
+    const int ncells,
+    const float cellEdge,
+    const float radius,
+    cudaStream_t stream);
+
+size_t get_radixsort_buffer_size(cudaStream_t stream);
+
 #ifdef __cplusplus
 }
 #endif
