@@ -236,12 +236,16 @@ of particle indices, adding their contribution to each of the kernel cells aroun
 given particle. Inputs are:
 	-locs: (batch_size X N X ndims) the cartesian coordinates of all the particles.
 	-data: (batch_size X N X nchannels) the features associated with each particle.
+	-neighbors: (batch_size X N X max_neighbors) a pre-computed list of neighbors for
+				each particle. If there are fewer than max_neighbors for a given
+				particle, the list is terminated in -1.
 	-weight: (nkernels X nchannels X ncells) the kernel weights.
 	-bias: (nkernels) the kernel biases.
 	-batch_size: the size of the batch.
 	-N: the number of particles in each batch.
 	-nchannels: the number of features per particle.
 	-ndims: the cardinality of the cartesian coordinate space.
+	-max_neighbors: the maximum number of neighbors a given particle may have.
 	-nkernels: the number of convolution kernels.
 	-ncells: the number of cells in each kernel (this is the product of all the values
 			 in kernel_size).
@@ -264,17 +268,23 @@ given particle. Inputs are:
 			 then the derivative wrt the weights is computed. It is expected that ddata
 			 and dweight will either be both NULL (forward computation) or both not
 			 NULL (backward computation).
+	-bidirectional: if true, then contributions between two neighboring particles are added
+					to both particles when the particle with the lowest index is encountered.
+					When encountering the higher indexed particle, then that interaction is
+					skipped. This can give almost a 2x speedup when true.
 **/
 DEVICE_FUNC
 void compute_kernel_cells(
 		const float* locs, 
 		const float* data, 
+		const float* neighbors,
 		const float* weight, 
 		const float* bias, 
 		const int batch_size, 
 		const int N, 
 		const int nchannels, 
 		const int ndims,
+		const int max_neighbors,
 		const int nkernels,
 		const int ncells,
 		const float radius,
@@ -285,10 +295,9 @@ void compute_kernel_cells(
 		float* out, 
 		const int b,
 		const int n,
-		int start,
-		const int end,
 		float* ddata, 
-		float* dweight)
+		float* dweight,
+		const int bidirectional)
 {
 	int idxs[MAX_CARTESIAN_DIM];
 	const float* r = locs + (b*N + n)*ndims;
@@ -296,13 +305,13 @@ void compute_kernel_cells(
 	float* out_ptrn = out + b*nkernels*N + n*nkernels;
 	const float* data_ptrn = data + b*nchannels*N + n*nchannels;
 	float* ddata_ptrn = ddata + b*nchannels*N + n*nchannels;
+	const float* neighptr = neighbors + b*N*max_neighbors + n*max_neighbors;
 
-	if(start < n)
-		start = n;
-
-	int j;
-	for(j = start; j < end && j < N; ++j)
+	int j, jj;
+	for(jj = 0; jj < max_neighbors && neighptr[jj] >= 0; ++jj)
 	{
+		j = neighptr[jj];
+		if(bidirectional && jj < n) continue;
 		const float* r2 = locs + (b*N + j)*ndims;
 		float d = dissqr(r, r2, ndims);
 		float dd = fastroot(ndims);
@@ -360,7 +369,7 @@ void compute_kernel_cells(
 							{
 								atomicAdd(ddata_ptrj + ink, 
 									(*(out_ptrn + outk))*weightnj*kw*norm);
-								if(j != n)
+								if(bidirectional && j != n)
 									atomicAdd(ddata_ptrn + ink, 
 										(*(out_ptrj + outk))*weightjn*kw*norm);
 							}
@@ -369,7 +378,7 @@ void compute_kernel_cells(
 								atomicAdd(dweight + outk*nchannels*ncells + 
 										  ink*ncells + kernel_idx, 
 									(*(out_ptrn + outk))*(*(data_ptrj + ink))*kw*norm);
-								if(j != n)
+								if(bidirectional && j != n)
 									atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + 
 											  (ncells - kernel_idx - 1), 
 										(*(out_ptrj + outk))*(*(data_ptrn + ink))*kw*norm);
@@ -378,10 +387,12 @@ void compute_kernel_cells(
 						else
 						{
 							float f1 = weightnj*(*(data_ptrj + ink))*kw*norm;
-							float g1 = weightjn*(*(data_ptrn + ink))*kw*norm;
 							atomicAdd(out_ptrn + outk, f1);
-							if(j != n)
+							if(bidirectional && j != n) 
+							{
+								float g1 = weightjn*(*(data_ptrn + ink))*kw*norm;
 								atomicAdd(out_ptrj + outk, g1);
+							}
 						}
 					}
 				}

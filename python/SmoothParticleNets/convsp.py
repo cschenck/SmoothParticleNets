@@ -79,7 +79,7 @@ class ConvSP(torch.nn.Module):
         self.nshared_device_mem = -1
         self.device_id = -1
 
-    def forward(self, locs, data):
+    def forward(self, locs, data, neighbors):
         """ Compute a forward pass of the Smooth Particle Convolution Layer.
 
         Inputs:
@@ -87,6 +87,10 @@ class ConvSP(torch.nn.Module):
                    of particles, and D is the dimensionality of the particles'
                    coordinate space.
             -data: A BxNxC tensor where C is the number of input features.
+            -neighbors: A BxNxM tensor where M is the maximum number of neighbors.
+                        For each particle, this is the list of particle indices
+                        that are considered neighbors. If the number of neighbors
+                        is less than M, the less is ended with a -1.
 
         Returns: A BxNxO tensor where O is the number of output features.
         """
@@ -109,7 +113,7 @@ class ConvSP(torch.nn.Module):
         convsp = _ConvSPFunction(self.radius, self.kernel_size, self.dilation,
             self.dis_norm, self.kernel_fn, self.ncells, self.nshared_device_mem)
         # data.shape = BxCxN
-        data = convsp(locs, data, self.weight, self.bias)
+        data = convsp(locs, data, neighbors, self.weight, self.bias)
         # data.shape = BxOxN
         return data
 
@@ -134,20 +138,20 @@ class _ConvSPFunction(torch.autograd.Function):
         self.ncells = ncells
         self.nshared_device_mem = nshared_device_mem
 
-    def forward(self, locs, data, weight, bias):
-        self.save_for_backward(locs, data, weight, bias)
+    def forward(self, locs, data, neighbors, weight, bias):
+        self.save_for_backward(locs, data, neighbors, weight, bias)
         batch_size = locs.size()[0]
         N = locs.size()[1]
         nkernels = weight.size()[0]
         ret = data.new(batch_size, N, nkernels)
         ret.fill_(0)
         if locs.is_cuda:
-            if not _ext.spnc_convsp_forward(locs, data, weight, bias, self.radius, 
+            if not _ext.spnc_convsp_forward(locs, data, neighbors, weight, bias, self.radius, 
                         self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret, 
                         self.nshared_device_mem):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_forward(locs, data, weight, bias, self.radius, 
+            _ext.spn_convsp_forward(locs, data, neighbors, weight, bias, self.radius, 
                 self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret)
 
         # Add the bias.
@@ -157,18 +161,18 @@ class _ConvSPFunction(torch.autograd.Function):
 
 
     def backward(self, grad_output):
-        locs, data, weight, bias = self.saved_tensors
+        locs, data, neighbors, weight, bias = self.saved_tensors
         ret_data = grad_output.new(data.size())
         ret_data.fill_(0)
         ret_weight = grad_output.new(weight.size())
         ret_weight.fill_(0)
         if grad_output.is_cuda:
-            if not _ext.spnc_convsp_backward(locs, data, weight, bias, self.radius, 
+            if not _ext.spnc_convsp_backward(locs, data, neighbors, weight, bias, self.radius, 
                         self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
                         grad_output, ret_data, ret_weight, self.nshared_device_mem):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_backward(locs, data, weight, bias, self.radius, 
+            _ext.spn_convsp_backward(locs, data, neighbors, weight, bias, self.radius, 
                 self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
                 grad_output, ret_data, ret_weight)
 
@@ -176,6 +180,7 @@ class _ConvSPFunction(torch.autograd.Function):
         # gradients for data, so just set the rest to 0.
         return (grad_output.new(locs.size()).fill_(0), 
                 ret_data, 
+                grad_output.new(neighbors.size()).fill_(0),
                 ret_weight,
                 grad_output.sum(1).sum(0))
 

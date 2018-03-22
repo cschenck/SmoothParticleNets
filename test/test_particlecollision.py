@@ -75,12 +75,12 @@ def eval_particlecollision(cuda=False):
     coll = spn.ParticleCollision(NDIM, RADIUS)
     convsp = use_cuda(coll)
 
-    idxs, neighbors = [undo_cuda(x) for x in coll(locs, data)]
+    vlocs, vdata, vidxs, vneighbors = coll(locs, data)
     
-    idxs = idxs.data.numpy().astype(int)
-    neighbors = neighbors.data.numpy().astype(int)
-    nlocs = undo_cuda(locs).data.numpy()
-    ndata = undo_cuda(data).data.numpy()
+    idxs = undo_cuda(vidxs).data.numpy().astype(int)
+    neighbors = undo_cuda(vneighbors).data.numpy().astype(int)
+    nlocs = undo_cuda(vlocs).data.numpy()
+    ndata = undo_cuda(vdata).data.numpy()
 
     # First make sure all the indexes are in idxs.
     for b in range(BATCH_SIZE):
@@ -93,7 +93,7 @@ def eval_particlecollision(cuda=False):
             assert all(olocs[b, j, :] == nlocs[b, i, :])
             assert all(odata[b, j, :] == ndata[b, i, :])
 
-    # Finally check the neighbor list.
+    # Check the neighbor list.
     for b in range(BATCH_SIZE):
         for i in range(N):
             for j in neighbors[b, i, :]:
@@ -105,6 +105,17 @@ def eval_particlecollision(cuda=False):
                     break
                 jj = np.where(idxs[b, :] == j)[0][0]
                 assert jj in neighbors[b, i, :]
+
+    # Finally put the locations and data back in their original order.
+    reorder = use_cuda(spn.ReorderData(reverse=True))
+    vlocs, vdata = reorder(vidxs, vlocs, vdata)
+    assert np.all(undo_cuda(vlocs).data.numpy() == olocs)
+    assert np.all(undo_cuda(vdata).data.numpy() == odata)
+
+    # Test gradients.
+    def func(l, d):
+        return coll(locs, data)[:2]
+    assert gradcheck(func, (locs, data), eps=1e-2, atol=1e-3)
 
 
 

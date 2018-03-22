@@ -4,11 +4,13 @@ int spn_max_cartesian_dim(void);
 
 
 int spn_convsp_forward(const THFloatTensor* locs_t, const THFloatTensor* data_t, 
+    const THFloatTensor* neighbors_t,
     const THFloatTensor* weight_t, const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const int dis_norm, const int kernel_fn, THFloatTensor* out_t);
 
 int spn_convsp_backward(const THFloatTensor* locs_t, const THFloatTensor* data_t, 
+    const THFloatTensor* neighbors_t,
     const THFloatTensor* weight_t, const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const int dis_norm, const int kernel_fn, THFloatTensor* out_t, 
@@ -29,14 +31,26 @@ int spn_convsdf_backward(const THFloatTensor* locs_t, const THFloatTensor* idxs_
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const float max_distance, THFloatTensor* out_t, THFloatTensor* dweight_t);
 
-int spn_compute_collisions(THFloatTensor* locs_t, 
-                           THFloatTensor* data_t, 
+int spn_hashgrid_order(THFloatTensor* locs_t, 
                            THFloatTensor* lower_bounds_t,
                            THFloatTensor* grid_dims_t,
                            THFloatTensor* cellIDs_t,
                            THFloatTensor* idxs_t,
+                           const float cellEdge);
+
+int spn_compute_collisions(THFloatTensor* locs_t, 
+                           THFloatTensor* lower_bounds_t,
+                           THFloatTensor* grid_dims_t,
+                           THFloatTensor* cellIDs_t,
                            THFloatTensor* cellStarts_t,
                            THFloatTensor* cellEnds_t,
                            THFloatTensor* collisions_t,
                            const float cellEdge,
                            const float radius);
+
+int spn_reorder_data(THFloatTensor* locs_t, 
+                         THFloatTensor* data_t, 
+                         THFloatTensor* idxs_t,
+                         THFloatTensor* nlocs_t,
+                         THFloatTensor* ndata_t,
+                         const int reverse);

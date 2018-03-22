@@ -7,12 +7,14 @@ extern "C" {
 int cuda_convsp(
 		const float* locs, 
 		const float* data, 
+		const float* neighbors,
 		const float* weight, 
 		const float* bias, 
 		const int batch_size, 
 		const int N, 
 		const int nchannels, 
 		const int ndims, 
+		const int max_neighbors,
 		const int nkernels, 
 		const int ncells, 
 		const float radius, 
@@ -52,25 +54,47 @@ int cuda_convsdf(
 
 size_t GetSharedMemPerBlock(int device);
 
-int cuda_compute_collisions(
+int cuda_hashgrid_order(
     float* locs,
-    float* data,
     const float* low,
     const float* grid_dims,
     float* cellIDs,
     float* idxs,
-    float* cellStarts,
-    float* cellEnds,
-    float* collisions,
     float* buffer,
     const int batch_size,
     const int N,
     const int ndims,
-    const int nchannels,
+    const float cellEdge,
+    cudaStream_t stream);
+
+int cuda_compute_collisions(
+    float* locs,
+    const float* low,
+    const float* grid_dims,
+    float* cellIDs,
+    float* cellStarts,
+    float* cellEnds,
+    float* collisions,
+    const int batch_size,
+    const int N,
+    const int ndims,
     const int max_collisions,
     const int ncells,
     const float cellEdge,
     const float radius,
+    cudaStream_t stream);
+
+int cuda_reorder_data(
+    float* locs,
+    float* data,
+    float* idxs,
+    float* nlocs,
+    float* ndata,
+    const int batch_size,
+    const int N,
+    const int ndims,
+    const int nchannels,
+    const int reverse,
     cudaStream_t stream);
 
 size_t get_radixsort_buffer_size(cudaStream_t stream);

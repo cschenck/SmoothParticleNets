@@ -20,6 +20,7 @@ except ImportError:
 def w(x, h=1):
     return 1.0/np.pi*(0.25*max(0, h - x)**3 - max(0, h/2.0 - x)**3)/(h**3/(8*np.pi))
 
+
 def test_convsp(cpu=True, cuda=True):
     if cpu:
         print("Testing CPU implementation of ConvSP...")
@@ -87,6 +88,15 @@ def eval_convsp(cuda=False):
     weights = torch.nn.Parameter(torch.FloatTensor(weights), requires_grad=True)
     biases = torch.nn.Parameter(torch.FloatTensor(biases), requires_grad=True)
 
+    coll = use_cuda(spn.ParticleCollision(NDIM, 
+        RADIUS + DILATION*max((k - 1)/2 for k in KERNEL_SIZE)))
+    locs, data, idxs, neighbors = coll(locs, data)
+    reorder = use_cuda(spn.ReorderData(reverse=False))
+    ground_truth = torch.autograd.Variable(use_cuda(torch.FloatTensor(ground_truth)), 
+        requires_grad=False)
+    reorder(idxs, ground_truth)
+    ground_truth = undo_cuda(ground_truth).data.numpy()
+
     convsp = spn.ConvSP(NCHANNELS, NKERNELS, NDIM, KERNEL_SIZE, DILATION, RADIUS)
     convsp.weight = weights
     convsp.bias = biases
@@ -110,7 +120,7 @@ def eval_convsp(cuda=False):
             fixedmem + block_size*memperparticle*2)
 
 
-    pred = undo_cuda(convsp(locs, data))
+    pred = undo_cuda(convsp(locs, data, neighbors))
     np.testing.assert_array_almost_equal(pred.data.numpy(), ground_truth, decimal=3)
 
     if cuda:
@@ -122,10 +132,13 @@ def eval_convsp(cuda=False):
             fixedmem + block_size*memperparticle*2)
 
 
+    neighbors = torch.autograd.Variable(neighbors.data, requires_grad=False)
+    data = torch.autograd.Variable(data.data, requires_grad=True)
+    locs = torch.autograd.Variable(locs.data, requires_grad=False)
     def func(d, w, b):
         convsp.weight = w
         convsp.bias = b
-        return (convsp(locs, d),)
+        return (convsp(locs, d, neighbors),)
     assert gradcheck(func, (data, weights, biases), eps=1e-2, atol=1e-3)
 
 

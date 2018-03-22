@@ -1,3 +1,6 @@
+
+#include <string.h>
+
 #include <TH/TH.h>
 
 #ifdef CUDA
@@ -7,8 +10,10 @@
 #include "constants.h"
 
 
-int cpu_convsp(const float* locs, const float* data, const float* weight, const float* bias, 
+int cpu_convsp(const float* locs, const float* data, const float* neighbors, 
+    const float* weight, const float* bias, 
     const int batch_size, const int N, const int nchannels, const int ndims, 
+    const int max_neighbors,
     const int nkernels, const int ncells, const float radius, const float* kernel_size, 
     const float* dilation, const int dis_norm, const int kernel_fn, float* out, 
     float* ddata, float* dweight);
@@ -27,32 +32,37 @@ int spn_max_cartesian_dim(void)
 }
 
 int spn_convsp_forward(const THFloatTensor* locs_t, const THFloatTensor* data_t, 
-    const THFloatTensor* weight_t, const THFloatTensor* bias_t, const float radius, 
+    const THFloatTensor* neighbors_t, const THFloatTensor* weight_t, 
+    const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const int dis_norm, const int kernel_fn, THFloatTensor* out_t)
 {
 
     const float* locs = THFloatTensor_data(locs_t);
     const float* data = THFloatTensor_data(data_t);
+    const float* neighbors = THFloatTensor_data(neighbors_t);
     const float* weight = THFloatTensor_data(weight_t);
     const float* bias = THFloatTensor_data(bias_t); 
     const int batch_size = locs_t->size[0];
     const int N = locs_t->size[1];
     const int nchannels = data_t->size[2];
     const int ndims = locs_t->size[2];
+    const int max_neighbors = neighbors_t->size[2];
     const int nkernels = weight_t->size[0];
     const int ncells = weight_t->size[2];
     const float* kernel_size = THFloatTensor_data(kernel_size_t);
     const float* dilation = THFloatTensor_data(dilation_t);
     float* out = THFloatTensor_data(out_t);
 
-    return cpu_convsp(locs, data, weight, bias, batch_size, N, nchannels, ndims,
+    return cpu_convsp(locs, data, neighbors, weight, bias, batch_size, N, nchannels, ndims,
+        max_neighbors,
         nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, out, NULL, 
         NULL);
 }
 
 int spn_convsp_backward(const THFloatTensor* locs_t, const THFloatTensor* data_t, 
-    const THFloatTensor* weight_t, const THFloatTensor* bias_t, const float radius, 
+    const THFloatTensor* neighbors_t, const THFloatTensor* weight_t, 
+    const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const int dis_norm, const int kernel_fn, THFloatTensor* out_t, 
     THFloatTensor* ddata_t, THFloatTensor* dweight_t)
@@ -60,6 +70,7 @@ int spn_convsp_backward(const THFloatTensor* locs_t, const THFloatTensor* data_t
 
     const float* locs = THFloatTensor_data(locs_t);
     const float* data = THFloatTensor_data(data_t);
+    const float* neighbors = THFloatTensor_data(neighbors_t);
     const float* weight = THFloatTensor_data(weight_t);
     const float* bias = THFloatTensor_data(bias_t); 
     float* ddata = THFloatTensor_data(ddata_t);
@@ -68,19 +79,23 @@ int spn_convsp_backward(const THFloatTensor* locs_t, const THFloatTensor* data_t
     const int N = locs_t->size[1];
     const int nchannels = data_t->size[2];
     const int ndims = locs_t->size[2];
+    const int max_neighbors = neighbors_t->size[2];
     const int nkernels = weight_t->size[0];
     const int ncells = weight_t->size[2];
     const float* kernel_size = THFloatTensor_data(kernel_size_t);
     const float* dilation = THFloatTensor_data(dilation_t);
     float* out = THFloatTensor_data(out_t);
 
-    return cpu_convsp(locs, data, weight, bias, batch_size, N, nchannels, ndims,
+    return cpu_convsp(locs, data, neighbors, weight, bias, batch_size, N, nchannels, ndims,
+        max_neighbors,
         nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, out, 
         ddata, dweight);
 }
 
-int cpu_convsp(const float* locs, const float* data, const float* weight, const float* bias, 
+int cpu_convsp(const float* locs, const float* data, const float* neighbors, 
+    const float* weight, const float* bias, 
     const int batch_size, const int N, const int nchannels, const int ndims, 
+    const int max_neighbors,
     const int nkernels, const int ncells, const float radius, const float* kernel_size, 
     const float* dilation, const int dis_norm, const int kernel_fn, float* out, 
     float* ddata, float* dweight)
@@ -90,9 +105,9 @@ int cpu_convsp(const float* locs, const float* data, const float* weight, const 
     {
         for(n = 0; n < N; ++n)
         {
-            compute_kernel_cells(locs, data, weight, bias, batch_size, N, 
-                nchannels, ndims, nkernels, ncells, radius, kernel_size, dilation, 
-                dis_norm, kernel_fn, out, b, n, 0, N, ddata, dweight);
+            compute_kernel_cells(locs, data, neighbors, weight, bias, batch_size, N, 
+                nchannels, ndims, max_neighbors, nkernels, ncells, radius, kernel_size,
+                dilation, dis_norm, kernel_fn, out, b, n, ddata, dweight, 1);
         }
     }
     return 1;
@@ -198,33 +213,21 @@ int cpu_convsdf(const float* locs, const int batch_size, const int N, const int 
 }
 
 
-int spn_compute_collisions(THFloatTensor* locs_t, 
-                           THFloatTensor* data_t, 
+int spn_hashgrid_order(THFloatTensor* locs_t, 
                            THFloatTensor* lower_bounds_t,
                            THFloatTensor* grid_dims_t,
                            THFloatTensor* cellIDs_t,
                            THFloatTensor* idxs_t,
-                           THFloatTensor* cellStarts_t,
-                           THFloatTensor* cellEnds_t,
-                           THFloatTensor* collisions_t,
-                           const float cellEdge,
-                           const float radius)
+                           const float cellEdge)
 {
     float* locs = THFloatTensor_data(locs_t);
-    float* data = THFloatTensor_data(data_t);
     float* low = THFloatTensor_data(lower_bounds_t);
     float* grid_dims = THFloatTensor_data(grid_dims_t);
     float* cellIDs = THFloatTensor_data(cellIDs_t);
     float* idxs = THFloatTensor_data(idxs_t);
-    float* cellStarts = THFloatTensor_data(cellStarts_t);
-    float* cellEnds = THFloatTensor_data(cellEnds_t);
-    float* collisions = THFloatTensor_data(collisions_t);
     const int batch_size = locs_t->size[0];
     const int N = locs_t->size[1];
     const int ndims = locs_t->size[2];
-    const int nchannels = data_t->size[2];
-    const int max_collisions = collisions_t->size[2];
-    const int ncells = cellStarts_t->size[1];
 
     int b, i, j, d;
 
@@ -263,15 +266,39 @@ int spn_compute_collisions(THFloatTensor* locs_t,
 
             if(minidx != i)
             {
-                swapf(locs + b*N*ndims + i*ndims, locs + b*N*ndims + minidx*ndims, ndims);
-                swapf(data + b*N*nchannels + i*nchannels, 
-                    data + b*N*nchannels + minidx*nchannels, nchannels);
                 swapf(cellIDs + b*N + i, cellIDs + b*N + minidx, 1);
                 swapf(idxs + b*N + i, idxs + b*N + minidx, 1);
             }
         }
     }
 
+    return 1;
+}
+
+int spn_compute_collisions(THFloatTensor* locs_t, 
+                           THFloatTensor* lower_bounds_t,
+                           THFloatTensor* grid_dims_t,
+                           THFloatTensor* cellIDs_t,
+                           THFloatTensor* cellStarts_t,
+                           THFloatTensor* cellEnds_t,
+                           THFloatTensor* collisions_t,
+                           const float cellEdge,
+                           const float radius)
+{
+    float* locs = THFloatTensor_data(locs_t);
+    float* low = THFloatTensor_data(lower_bounds_t);
+    float* grid_dims = THFloatTensor_data(grid_dims_t);
+    float* cellIDs = THFloatTensor_data(cellIDs_t);
+    float* cellStarts = THFloatTensor_data(cellStarts_t);
+    float* cellEnds = THFloatTensor_data(cellEnds_t);
+    float* collisions = THFloatTensor_data(collisions_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int ndims = locs_t->size[2];
+    const int max_collisions = collisions_t->size[2];
+    const int ncells = cellStarts_t->size[1];
+
+    int b, i;
     // Create the cell start and end lists.
     for(b = 0; b < batch_size; ++b)
     {
@@ -324,6 +351,50 @@ int spn_compute_collisions(THFloatTensor* locs_t,
         }
     }
 
+    return 1;
+}
+
+int spn_reorder_data(THFloatTensor* locs_t, 
+                         THFloatTensor* data_t, 
+                         THFloatTensor* idxs_t,
+                         THFloatTensor* nlocs_t,
+                         THFloatTensor* ndata_t,
+                         const int reverse)
+{
+    float* locs = THFloatTensor_data(locs_t);
+    float* data = THFloatTensor_data(data_t);
+    float* idxs = THFloatTensor_data(idxs_t);
+    float* nlocs = THFloatTensor_data(nlocs_t);
+    float* ndata = THFloatTensor_data(ndata_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int ndims = locs_t->size[2];
+    int nchannels = 0;
+    if(data_t->nDimension > 0)
+        nchannels = data_t->size[2];
+
+    int b, i, d;
+    for(b = 0; b < batch_size; ++b)
+    {
+        for(i = 0; i < N; ++i)
+        {
+            int nn = i;
+            int on = idxs[b*N + i];
+            if(reverse)
+            {
+                nn = idxs[b*N + i];
+                on = i%N;
+            }
+            for(d = 0; d < ndims; ++d)
+                nlocs[b*N*ndims + nn*ndims + d] = locs[b*N*ndims + on*ndims + d];
+            for(d = 0; d < nchannels; ++d)
+                ndata[b*N*nchannels + nn*nchannels + d] = 
+                                data[b*N*nchannels + on*nchannels + d];
+        }
+    }
+
+    memcpy(locs, nlocs, sizeof(float)*N*batch_size*ndims);
+    memcpy(data, ndata, sizeof(float)*N*batch_size*nchannels);
     return 1;
 }
 
