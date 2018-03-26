@@ -35,9 +35,9 @@ def test_particlecollision(cpu=True, cuda=True):
 
 def eval_particlecollision(cuda=False):
     BATCH_SIZE = 2
-    N = 10
+    N = 100
     NDIM = 2
-    RADIUS = 0.6
+    RADIUS = 0.2
     NCHANNELS = 2
 
     np.random.seed(0)

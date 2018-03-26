@@ -249,7 +249,7 @@ void kernel_compute_cellIDs(
         for(d = 0; d < ndims; ++d)
             hash += partial_grid_hash(
                 loc2grid(locs[b*N*ndims + n*ndims + d], low[b*ndims + d], cellEdge), 
-                grid_dims[b*ndims + d], d);
+                grid_dims + b*ndims, d, ndims);
         cellIDs[i] = hash;
         idxs[i] = n;
 
@@ -258,7 +258,7 @@ void kernel_compute_cellIDs(
             uint32_t mh = 0;
             for(d = 0; d < ndims; ++d)
                 mh += partial_grid_hash(grid_dims[b*ndims + d] - 1, 
-                    grid_dims[b*ndims + d], d);
+                    grid_dims + b*ndims, d, ndims);
             atomicMax(maxhash, mh);
         }
     }
@@ -285,9 +285,12 @@ int cuda_hashgrid_order(
     dim3 threads(256); 
     kernel_compute_cellIDs<<<threads, blocks, 0, stream>>>(locs, low, grid_dims, cellIDsi,
         idxs, batch_size, N, ndims, cellEdge, (uint32_t*)buffer);
+    cudaStreamSynchronize(stream);
     uint32_t maxhash;
     cudaMemcpy(&maxhash, buffer, sizeof(uint32_t), cudaMemcpyDeviceToHost);
-    uint32_t numBits = (uint32_t)ceil(log2((float)maxhash));
+    uint32_t numBits = (uint32_t)ceil(log2((float)maxhash)) + 1;
+    // TODO this seems to not work right, hard coding it at max val for now.
+    numBits = sizeof(uint32_t)*8;
 
     // Sort the particles by cell ID.
     for(b = 0; b < batch_size; ++b)
@@ -298,13 +301,16 @@ int cuda_hashgrid_order(
         size_t sortTempSize;
         cub::DeviceRadixSort::SortPairs(buffer, sortTempSize, d_keys, d_values, N, 0, 
             numBits, stream);
+        cudaStreamSynchronize(stream);
+
         if (d_keys.Current() != cellIDsi + b*N)
             cudaMemcpyAsync(cellIDsi + b*N, d_keys.Current(), 
-                sizeof(uint32_t)*N, cudaMemcpyDeviceToDevice);
+                sizeof(uint32_t)*N, cudaMemcpyDeviceToDevice, stream);
 
         if (d_values.Current() != idxs + b*N)
             cudaMemcpyAsync(idxs + b*N, d_values.Current(), sizeof(float)*N, 
-                cudaMemcpyDeviceToDevice);
+                cudaMemcpyDeviceToDevice, stream);
+        cudaStreamSynchronize(stream);
     }
 
     // BUG: For some reason, CUDA won't finish the above cudaMemcpy's (async or 
@@ -425,6 +431,7 @@ int cuda_compute_collisions(
     // Create the cell start and end lists.
     kernel_fill_cells<<<threads, blocks, 0, stream>>>(cellIDsi, cellStarts, cellEnds, 
         batch_size, N, ncells);
+    cudaStreamSynchronize(stream);
 
     // Make collision lists.
     kernel_compute_collisions<<<threads, blocks, 0, stream>>>(
@@ -442,7 +449,7 @@ int cuda_compute_collisions(
         collisions,
         max_collisions);
 
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(stream);
     return PrintOnCudaError("compute_collisions");
 }
 

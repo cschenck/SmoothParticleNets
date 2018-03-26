@@ -240,7 +240,7 @@ int spn_hashgrid_order(THFloatTensor* locs_t,
             for(d = 0; d < ndims; ++d)
                 hash += partial_grid_hash(
                     loc2grid(locs[b*N*ndims + i*ndims + d], low[b*ndims + d], cellEdge), 
-                    grid_dims[b*ndims + d], d);
+                    grid_dims + b*ndims, d, ndims);
             cellIDs[b*N + i] = hash;
             idxs[b*N + i] = i;
         }

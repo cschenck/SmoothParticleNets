@@ -18,7 +18,25 @@ extern "C" {
 #include "constants.h"
 #include "kernel_constants.h"
 
-#ifndef CUDA
+#ifdef CUDA
+	
+DEVICE_FUNC 
+float atomicMax(float *addr, float value)
+{
+    float old = *addr;
+    float assumed;
+    do
+    {
+    	if(old >= value) 
+    		return old;
+        assumed = old;
+        old = atomicCAS((unsigned int*)addr, __float_as_int(assumed), __float_as_int(value));
+    }while(old != assumed);
+    return old;
+}
+
+#else
+
 void atomicAdd(float* ptr, float value)
 {
 	*ptr += value;
@@ -27,7 +45,11 @@ typedef struct
 {
 	float x, y, z, w;
 } float4;
+
 #endif
+
+
+
 
 DEVICE_FUNC
 float kernel_w(const float d, const float H, const int fn)
@@ -68,15 +90,16 @@ int loc2grid(float coord, float low_coord, float cellEdge)
 
 
 GLOBAL_FUNC
-int partial_grid_hash(int grid_coord, int grid_dim, int dim)
+int partial_grid_hash(int grid_coord, const float* grid_dims, int dim, int max_dim)
 {
-	if(grid_coord >= grid_dim)
-		grid_coord = grid_dim - 1;
+	if(grid_coord >= grid_dims[dim])
+		grid_coord = grid_dims[dim] - 1;
+	else if(grid_coord < 0)
+		grid_coord = 0;
 	int dd;
 	int c = grid_coord;
-    c &= (grid_dim - 1);
-    for(dd = 0; dd < dim; ++dd)
-        c *= grid_dim;
+    for(dd = dim + 1; dd < max_dim; ++dd)
+        c *= grid_dims[dd];
     return c;
 }
 
@@ -311,7 +334,7 @@ void compute_kernel_cells(
 	for(jj = 0; jj < max_neighbors && neighptr[jj] >= 0; ++jj)
 	{
 		j = neighptr[jj];
-		if(bidirectional && jj < n) continue;
+		if(bidirectional && j < n) continue;
 		const float* r2 = locs + (b*N + j)*ndims;
 		float d = dissqr(r, r2, ndims);
 		float dd = fastroot(ndims);
@@ -678,7 +701,7 @@ void compute_collisions(
 			if(coord < 0 || coord >= grid_dims[b*ndims + k])
 				inbounds = 0;
 			else
-				cellID += partial_grid_hash(coord, grid_dims[b*ndims + k], k);
+				cellID += partial_grid_hash(coord, grid_dims + b*ndims, k, ndims);
 		}
 
 		if(inbounds)
