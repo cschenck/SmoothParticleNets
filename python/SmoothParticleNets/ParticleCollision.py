@@ -245,8 +245,9 @@ class _ParticleCollisionFunction(torch.autograd.Function):
         return neighbors 
 
     def backward(self, grad_neighbors):
-        locs, lower_bounds, grid_dims = self.saved_tensors
+        qlocs, locs, lower_bounds, grid_dims = self.saved_tensors
         return (
+            grad_neighbors.new(qlocs.size()).fill_(0),
             grad_neighbors.new(locs.size()).fill_(0),
             grad_neighbors.new(lower_bounds.size()).fill_(0),
             grad_neighbors.new(grid_dims.size()).fill_(0),)

@@ -36,6 +36,7 @@ def test_particlecollision(cpu=True, cuda=True):
 def eval_particlecollision(cuda=False):
     BATCH_SIZE = 2
     N = 100
+    M = 77
     NDIM = 2
     RADIUS = 0.2
     NCHANNELS = 2
@@ -43,13 +44,14 @@ def eval_particlecollision(cuda=False):
     np.random.seed(0)
 
     locs = np.random.rand(BATCH_SIZE, N, NDIM).astype(np.float32)
+    qlocs = np.random.rand(BATCH_SIZE, M, NDIM).astype(np.float32)
     data = np.random.rand(BATCH_SIZE, N, NCHANNELS).astype(np.float32)
 
-    gt_neighbors = np.ones((BATCH_SIZE, N, N), dtype=int)*-1
+    gt_neighbors = np.ones((BATCH_SIZE, M, N), dtype=int)*-1
     for b in range(BATCH_SIZE):
-        for i in range(N):
+        for i in range(M):
             for j in range(N):
-                d = np.square(locs[b, i, :] - locs[b, j, :]).sum()
+                d = np.square(qlocs[b, i, :] - locs[b, j, :]).sum()
                 if d <= RADIUS*RADIUS:
                     nc = min(np.where(gt_neighbors[b, i, :] < 0)[0])
                     gt_neighbors[b, i, nc] = j
@@ -66,16 +68,19 @@ def eval_particlecollision(cuda=False):
             return x
 
     olocs = locs
+    oqlocs = qlocs
     odata = data
     locs = torch.autograd.Variable(use_cuda(torch.FloatTensor(locs.copy())), 
+        requires_grad=False)
+    qlocs = torch.autograd.Variable(use_cuda(torch.FloatTensor(qlocs.copy())), 
         requires_grad=False)
     data = torch.autograd.Variable(use_cuda(torch.FloatTensor(data.copy())), 
         requires_grad=False)
 
-    coll = spn.ParticleCollision(NDIM, RADIUS)
+    coll = spn.ParticleCollision(NDIM, RADIUS, max_collisions=N)
     convsp = use_cuda(coll)
 
-    vlocs, vdata, vidxs, vneighbors = coll(locs, data)
+    vlocs, vdata, vidxs, vneighbors = coll(locs, data, qlocs)
     
     idxs = undo_cuda(vidxs).data.numpy().astype(int)
     neighbors = undo_cuda(vneighbors).data.numpy().astype(int)
@@ -95,12 +100,12 @@ def eval_particlecollision(cuda=False):
 
     # Check the neighbor list.
     for b in range(BATCH_SIZE):
-        for i in range(N):
+        for i in range(M):
             for j in neighbors[b, i, :]:
                 if j < 0:
                     break
-                assert idxs[b, j] in gt_neighbors[b, idxs[b, i], :]
-            for j in gt_neighbors[b, idxs[b, i], :]:
+                assert idxs[b, j] in gt_neighbors[b, i, :]
+            for j in gt_neighbors[b, i, :]:
                 if j < 0:
                     break
                 jj = np.where(idxs[b, :] == j)[0][0]
@@ -113,9 +118,9 @@ def eval_particlecollision(cuda=False):
     assert np.all(undo_cuda(vdata).data.numpy() == odata)
 
     # Test gradients.
-    def func(l, d):
-        return coll(locs, data)[:2]
-    assert gradcheck(func, (locs, data), eps=1e-2, atol=1e-3)
+    def func(l, d, q):
+        return coll(l, d, q)[:2]
+    assert gradcheck(func, (locs, data, qlocs), eps=1e-2, atol=1e-3)
 
 
 

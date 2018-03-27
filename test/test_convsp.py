@@ -39,6 +39,7 @@ def test_convsp(cpu=True, cuda=True):
 def eval_convsp(cuda=False):
     BATCH_SIZE = 2
     N = 10
+    M = 13
     NDIM = 2
     KERNEL_SIZE = (3, 5)
     RADIUS = 1.0
@@ -50,21 +51,22 @@ def eval_convsp(cuda=False):
     np.random.seed(0)
 
     locs = np.random.rand(BATCH_SIZE, N, NDIM)
+    qlocs = np.random.rand(BATCH_SIZE, M, NDIM)
     data = np.random.rand(BATCH_SIZE, N, NCHANNELS)
     weights = np.random.rand(NKERNELS, NCHANNELS, np.prod(KERNEL_SIZE))
     biases = np.random.rand(NKERNELS)
 
     kernel_centers = (np.array(KERNEL_SIZE) - 1)/2
-    ground_truth = np.zeros((BATCH_SIZE, N, NKERNELS), dtype=np.float32)
+    ground_truth = np.zeros((BATCH_SIZE, M, NKERNELS), dtype=np.float32)
     for b in range(BATCH_SIZE):
-        for i in range(N):
+        for i in range(M):
             for j in range(N):
-                d = np.square(locs[b, i, :] - locs[b, j, :]).sum()
+                d = np.square(qlocs[b, i, :] - locs[b, j, :]).sum()
                 nr = DILATION*max(KERNEL_SIZE)/2 + RADIUS
                 if d > nr*nr:
                     continue
                 for k, idxs in enumerate(itertools.product(*[range(x) for x in KERNEL_SIZE[::-1]])):
-                    d = np.square(locs[b, i, :] + (idxs[::-1] - kernel_centers)*DILATION 
+                    d = np.square(qlocs[b, i, :] + (idxs[::-1] - kernel_centers)*DILATION 
                         - locs[b, j, :]).sum()
                     if d > RADIUS*RADIUS:
                         continue
@@ -84,18 +86,19 @@ def eval_convsp(cuda=False):
             return x
 
     locs = torch.autograd.Variable(use_cuda(torch.FloatTensor(locs)), requires_grad=False)
+    qlocs = torch.autograd.Variable(use_cuda(torch.FloatTensor(qlocs)), requires_grad=False)
     data = torch.autograd.Variable(use_cuda(torch.FloatTensor(data)), requires_grad=True)
     weights = torch.nn.Parameter(torch.FloatTensor(weights), requires_grad=True)
     biases = torch.nn.Parameter(torch.FloatTensor(biases), requires_grad=True)
 
     coll = use_cuda(spn.ParticleCollision(NDIM, 
         RADIUS + DILATION*max((k - 1)/2 for k in KERNEL_SIZE)))
-    locs, data, idxs, neighbors = coll(locs, data)
-    reorder = use_cuda(spn.ReorderData(reverse=False))
-    ground_truth = torch.autograd.Variable(use_cuda(torch.FloatTensor(ground_truth)), 
-        requires_grad=False)
-    reorder(idxs, ground_truth)
-    ground_truth = undo_cuda(ground_truth).data.numpy()
+    locs, data, idxs, neighbors = coll(locs, data, qlocs)
+    # reorder = use_cuda(spn.ReorderData(reverse=False))
+    # ground_truth = torch.autograd.Variable(use_cuda(torch.FloatTensor(ground_truth)), 
+    #     requires_grad=False)
+    # reorder(idxs, ground_truth)
+    # ground_truth = undo_cuda(ground_truth).data.numpy()
 
     convsp = spn.ConvSP(NCHANNELS, NKERNELS, NDIM, KERNEL_SIZE, DILATION, RADIUS)
     convsp.weight = weights
@@ -120,7 +123,7 @@ def eval_convsp(cuda=False):
             fixedmem + block_size*memperparticle*2)
 
 
-    pred = undo_cuda(convsp(locs, data, neighbors))
+    pred = undo_cuda(convsp(locs, data, neighbors, qlocs))
     np.testing.assert_array_almost_equal(pred.data.numpy(), ground_truth, decimal=3)
 
     if cuda:
@@ -138,7 +141,7 @@ def eval_convsp(cuda=False):
     def func(d, w, b):
         convsp.weight = w
         convsp.bias = b
-        return (convsp(locs, d, neighbors),)
+        return (convsp(locs, d, neighbors, qlocs),)
     assert gradcheck(func, (data, weights, biases), eps=1e-2, atol=1e-3)
 
 
