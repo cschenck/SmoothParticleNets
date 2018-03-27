@@ -278,7 +278,8 @@ int spn_hashgrid_order(THFloatTensor* locs_t,
     return 1;
 }
 
-int spn_compute_collisions(THFloatTensor* locs_t, 
+int spn_compute_collisions(THFloatTensor* qlocs_t,
+                           THFloatTensor* locs_t, 
                            THFloatTensor* lower_bounds_t,
                            THFloatTensor* grid_dims_t,
                            THFloatTensor* cellIDs_t,
@@ -288,6 +289,7 @@ int spn_compute_collisions(THFloatTensor* locs_t,
                            const float cellEdge,
                            const float radius)
 {
+    float* qlocs = THFloatTensor_data(qlocs_t);
     float* locs = THFloatTensor_data(locs_t);
     float* low = THFloatTensor_data(lower_bounds_t);
     float* grid_dims = THFloatTensor_data(grid_dims_t);
@@ -296,6 +298,7 @@ int spn_compute_collisions(THFloatTensor* locs_t,
     float* cellEnds = THFloatTensor_data(cellEnds_t);
     float* collisions = THFloatTensor_data(collisions_t);
     const int batch_size = locs_t->size[0];
+    const int M = qlocs_t->size[1];
     const int N = locs_t->size[1];
     const int ndims = locs_t->size[2];
     const int max_collisions = collisions_t->size[2];
@@ -333,13 +336,15 @@ int spn_compute_collisions(THFloatTensor* locs_t,
     // Make collision lists.
     for(b = 0; b < batch_size; ++b)
     {
-        for(i = 0; i < N; ++i)
+        for(i = 0; i < M; ++i)
         {
             compute_collisions(
+                qlocs,
                 locs,
                 cellStarts,
                 cellEnds,
                 batch_size,
+                M,
                 N,
                 ndims,
                 ncells,

@@ -370,10 +370,12 @@ void kernel_fill_cells(
 }
 __global__
 void kernel_compute_collisions(
+    const float* qlocs,
     const float* locs,
     const float* cellStarts,
     const float* cellEnds,
     const int batch_size,
+    const int M,
     const int N,
     const int ndims,
     const int ncells,
@@ -387,15 +389,17 @@ void kernel_compute_collisions(
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
     int i;
-    for(i = index; i < N*batch_size; i += stride)
+    for(i = index; i < M*batch_size; i += stride)
     {
-        int b = i/N;
-        int n = i%N;
+        int b = i/M;
+        int n = i%M;
         compute_collisions(
+            qlocs,
             locs,
             cellStarts,
             cellEnds,
             batch_size,
+            M,
             N,
             ndims,
             ncells,
@@ -412,14 +416,16 @@ void kernel_compute_collisions(
 
 
 int cuda_compute_collisions(
-    float* locs,
+    const float* qlocs,
+    const float* locs,
     const float* low,
     const float* grid_dims,
-    float* cellIDs,
+    const float* cellIDs,
     float* cellStarts,
     float* cellEnds,
     float* collisions,
     const int batch_size,
+    const int M,
     const int N,
     const int ndims,
     const int max_collisions,
@@ -433,19 +439,26 @@ int cuda_compute_collisions(
     dim3 blocks(numBlocks);
     dim3 threads(256); 
 
-    uint32_t* cellIDsi = (uint32_t*) cellIDs;
+    const uint32_t* cellIDsi = (const uint32_t*) cellIDs;
 
     // Create the cell start and end lists.
     kernel_fill_cells<<<threads, blocks, 0, stream>>>(cellIDsi, cellStarts, cellEnds, 
         batch_size, N, ncells);
     cudaStreamSynchronize(stream);
 
+    nops = batch_size*N;
+    numBlocks = ceil(nops * (1.0/256));
+    blocks = dim3(numBlocks);
+    threads = dim3(256); 
+
     // Make collision lists.
     kernel_compute_collisions<<<threads, blocks, 0, stream>>>(
+        qlocs,
         locs,
         cellStarts,
         cellEnds,
         batch_size,
+        M,
         N,
         ndims,
         ncells,

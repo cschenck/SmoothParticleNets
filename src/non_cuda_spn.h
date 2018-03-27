@@ -38,7 +38,8 @@ int spnc_hashgrid_order(void* locs_t,
                            void* buffer_t,
                            const float cellEdge);
 
-int spnc_compute_collisions(void* locs_t, 
+int spnc_compute_collisions(void* qlocs_t,
+                           void* locs_t, 
                            void* lower_bounds_t,
                            void* grid_dims_t,
                            void* cellIDs_t,

@@ -38,7 +38,8 @@ int spn_hashgrid_order(THFloatTensor* locs_t,
                            THFloatTensor* idxs_t,
                            const float cellEdge);
 
-int spn_compute_collisions(THFloatTensor* locs_t, 
+int spn_compute_collisions(THFloatTensor* qlocs_t,
+                           THFloatTensor* locs_t, 
                            THFloatTensor* lower_bounds_t,
                            THFloatTensor* grid_dims_t,
                            THFloatTensor* cellIDs_t,

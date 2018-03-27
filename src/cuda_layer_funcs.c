@@ -172,7 +172,8 @@ int spnc_hashgrid_order(THCudaTensor* locs_t,
         buffer, batch_size, N, ndims, cellEdge, stream);
 }
 
-int spnc_compute_collisions(THCudaTensor* locs_t, 
+int spnc_compute_collisions(THCudaTensor* qlocs_t, 
+                           THCudaTensor* locs_t, 
                            THCudaTensor* lower_bounds_t,
                            THCudaTensor* grid_dims_t,
                            THCudaTensor* cellIDs_t,
@@ -182,6 +183,7 @@ int spnc_compute_collisions(THCudaTensor* locs_t,
                            const float cellEdge,
                            const float radius)
 {
+    float* qlocs = THCudaTensor_data(state, qlocs_t);
     float* locs = THCudaTensor_data(state, locs_t);
     float* low = THCudaTensor_data(state, lower_bounds_t);
     float* grid_dims = THCudaTensor_data(state, grid_dims_t);
@@ -190,14 +192,15 @@ int spnc_compute_collisions(THCudaTensor* locs_t,
     float* cellEnds = THCudaTensor_data(state, cellEnds_t);
     float* collisions = THCudaTensor_data(state, collisions_t);
     const int batch_size = locs_t->size[0];
+    const int M = qlocs_t->size[1];
     const int N = locs_t->size[1];
     const int ndims = locs_t->size[2];
     const int max_collisions = collisions_t->size[2];
     const int ncells = cellStarts_t->size[1];
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_compute_collisions(locs, low, grid_dims, cellIDs, cellStarts,
-        cellEnds, collisions, batch_size, N, ndims, max_collisions, 
+    return cuda_compute_collisions(qlocs, locs, low, grid_dims, cellIDs, cellStarts,
+        cellEnds, collisions, batch_size, M, N, ndims, max_collisions, 
         ncells, cellEdge, radius, stream);
 }
 
@@ -311,7 +314,8 @@ int spnc_hashgrid_order(void* locs_t,
     return 0;
 }
 
-int spnc_compute_collisions(void* locs_t, 
+int spnc_compute_collisions(void* qlocs_t,
+                           void* locs_t, 
                            void* lower_bounds_t,
                            void* grid_dims_t,
                            void* cellIDs_t,

@@ -70,14 +70,16 @@ int cuda_hashgrid_order(
     cudaStream_t stream);
 
 int cuda_compute_collisions(
-    float* locs,
+    const float* qlocs,
+    const float* locs,
     const float* low,
     const float* grid_dims,
-    float* cellIDs,
+    const float* cellIDs,
     float* cellStarts,
     float* cellEnds,
     float* collisions,
     const int batch_size,
+    const int M,
     const int N,
     const int ndims,
     const int max_collisions,

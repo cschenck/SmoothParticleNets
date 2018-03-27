@@ -35,7 +35,8 @@ int spnc_hashgrid_order(THCudaTensor* locs_t,
                            THCudaTensor* buffer_t,
                            const float cellEdge);
 
-int spnc_compute_collisions(THCudaTensor* locs_t, 
+int spnc_compute_collisions(THCudaTensor* qlocs_t, 
+                           THCudaTensor* locs_t, 
                            THCudaTensor* lower_bounds_t,
                            THCudaTensor* grid_dims_t,
                            THCudaTensor* cellIDs_t,

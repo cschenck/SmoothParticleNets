@@ -637,18 +637,20 @@ void compute_sdf_kernel_cells(
 }
 
 
-/** Compute the neighbors for a given particle in the list from a pre-computed hashgrid.
+/** Compute the neighbors for a given query location from a pre-computed hashgrid.
 This function assumes that the size of an edge of a cell in the hashgrid is at least radius,
 where radius is the maximum distance between any two locations to be considered neighbors. 
 Furthermore it assumes that the locations have already been ordered according to the 
 hashgrid, with all locations in the same grid cell contiguous in the locations array.
 The arguments are:
-	-locs (batch_size X N X dims) the cartesian coordinates of every query location.
+	-qlocs (batch_size X M X dims) the cartesian coordinates of every query location.
+	-locs (batch_size X N X dims) the cartesian coordinates of every particle.
 	-cellStarts (batch_size X ncells) the index of the location in each given hashgrid cell
 				with the smallest index.
 	-cellEnds (batch_size X ncells) 1+ the maximum index of all locations in each hashgrid
 			  cell.
 	-batch_size: the size of the batch.
+	-M: the number of query locations in each batch.
 	-N: the number of particles in each batch.
 	-ndims: the cardinality of the cartesian coordinate space.
 	-ncells: the total number of hashgrid cells, equal to max_grid_dimension^dims.
@@ -664,18 +666,20 @@ The arguments are:
     		   same cellEdge). Must be at least as large as radius.
 	-radius2: the radius squared, which is the maximum distance between any two particles 
 			  for them to be considered neighbors.
-	-collisions: (batch_size X N X max_collisions) the list of location indices that are
+	-collisions: (batch_size X M X max_collisions) the list of location indices that are
 				 neighbors for every location. Not all locations will have max_collisions
 				 neighbors, so the list for each location is terminated with a -1.
 	-b: the batch to compute neighbors for.
-	-n: the location to compute neighbors for.
+	-n: the query location to compute neighbors for.
 **/
 DEVICE_FUNC
 void compute_collisions(
+	const float* qlocs,
 	const float* locs,
 	const float* cellStarts,
 	const float* cellEnds,
 	const int batch_size,
+	const int M,
 	const int N,
 	const int ndims,
 	const int ncells,
@@ -692,9 +696,10 @@ void compute_collisions(
 	int grid_coord[MAX_CARTESIAN_DIM];
 	int offset[MAX_CARTESIAN_DIM];
 	int k, i;
+	const float* r = qlocs + (b*M + n)*ndims;
 	for(k = 0; k < ndims; ++k)
 	{
-		grid_coord[k] = loc2grid(locs[b*N*ndims + n*ndims + k], low[b*ndims + k], cellEdge);
+		grid_coord[k] = loc2grid(r[k], low[b*ndims + k], cellEdge);
 		offset[k] = -1;
 	}
 	while(offset[ndims-1] <= 1 && ncollisions < max_collisions)
@@ -718,12 +723,12 @@ void compute_collisions(
 				float d = 0.0f;
 				for(k = 0; k < ndims; ++k)
 				{
-					float nr = locs[b*N*ndims + n*ndims + k] - locs[b*N*ndims + i*ndims + k];
+					float nr = r[k] - locs[b*N*ndims + i*ndims + k];
 					d += nr*nr;
 				}
 				if(d < radius2)
 				{
-					collisions[b*N*max_collisions + n*max_collisions + ncollisions] = i;
+					collisions[b*M*max_collisions + n*max_collisions + ncollisions] = i;
 					++ncollisions;
 				}
 			}
@@ -738,7 +743,7 @@ void compute_collisions(
 	}
 
 	if(ncollisions < max_collisions)
-		collisions[b*N*max_collisions + n*max_collisions + ncollisions] = -1;
+		collisions[b*M*max_collisions + n*max_collisions + ncollisions] = -1;
 }
 
 

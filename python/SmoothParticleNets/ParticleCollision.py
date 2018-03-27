@@ -89,7 +89,7 @@ class ParticleCollision(torch.nn.Module):
 
         self.reorder = ReorderData(reverse=False)
 
-    def forward(self, locs, data=None):
+    def forward(self, locs, data=None, qlocs=None):
         """ Compute the neighbors of each location. Reorders the locs and data tensors
         in place and returns the list of indices in their new order and the list of
         neighbors for each location.
@@ -97,16 +97,28 @@ class ParticleCollision(torch.nn.Module):
         Inputs:
             -locs: A BxNxD tensor where B is the batch size, N is the number
                    of particles, and D is the dimensionality of the particles'
-                   coordinate space.
+                   coordinate space.            
             -data: [optional] A BxNxC tensor where C is the number of channels.
+                   Add this to have it reordered alongside locs.
+            -qlocs: [optional] A BxMxD tensor of query locations. The neighbors
+                    list in the output will be a list of all particles in locs
+                    that neighbor each query location. If not provided, locs is
+                    used instead.
 
         Returns: 
-            -Idxs: BxN tensor with the original index of each location in their
-                   new order.
-            -Neighbors: BxNxM where M is max_neighbors. This lists the indices of
-                        all locations within radius of each location, up to M. If
-                        there are fewer than M neighbors, -1 is used to indicate
-                        the end of the neighbor list.
+            -locs: A BxNxD tensor identical to the input locs, except reordered
+                   for optimized memory access.
+            -data: [optional] A BxNxC tensor identical to the input data reordered
+                   in the same order as locs. If the input data was not provided,
+                   then this is not returned.
+            -Idxs: BxN tensor with the original index of each particle location in their
+                   new order, e.g., idxs[b, i] = j where b is the batch index, j is
+                   the original index in locs, and i is the new index.
+            -Neighbors: BxMxK where K is max_neighbors. This lists the indices of
+                        all particles within radius of each query location, up to K. If
+                        there are fewer than K neighbors, -1 is used to indicate
+                        the end of the neighbor list. The indices are with respect to
+                        the reordered locs tensor.
         """
 
         # Error checking.
@@ -118,6 +130,10 @@ class ParticleCollision(torch.nn.Module):
             data = data.contiguous()
         else:
             data = torch.autograd.Variable(locs.data.new(0, 0, 0), requires_grad=False)
+
+        if qlocs is not None:
+            ec.check_tensor_dims(qlocs, "qlocs", (batch_size, -1, self.ndim))
+            qlocs = qlocs.contiguous()
 
         locs = locs.contiguous()
 
@@ -158,7 +174,8 @@ class ParticleCollision(torch.nn.Module):
         # Do the collision compution.
         coll = _ParticleCollisionFunction(self.radius, self.max_collisions, self.cellIDs,
             self.cellStarts, self.cellEnds,)
-        neighbors = coll(locs, lower_bounds, grid_dims)
+        neighbors = coll(qlocs if qlocs is not None else locs, 
+            locs, lower_bounds, grid_dims)
         return locs, data, idxs, neighbors
 
 
@@ -210,18 +227,18 @@ class _ParticleCollisionFunction(torch.autograd.Function):
         self.cellStarts = cellStarts
         self.cellEnds = cellEnds
 
-    def forward(self, locs, lower_bounds, grid_dims):
-        self.save_for_backward(locs, lower_bounds, grid_dims)
+    def forward(self, qlocs, locs, lower_bounds, grid_dims):
+        self.save_for_backward(qlocs, locs, lower_bounds, grid_dims)
         batch_size = locs.size()[0]
-        N = locs.size()[1]
-        neighbors = locs.new(batch_size, N, self.max_collisions)
+        M = qlocs.size()[1]
+        neighbors = locs.new(batch_size, M, self.max_collisions)
         neighbors.fill_(-1)
         if locs.is_cuda:
-            if not _ext.spnc_compute_collisions(locs, lower_bounds, grid_dims, self.cellIDs,
+            if not _ext.spnc_compute_collisions(qlocs, locs, lower_bounds, grid_dims, self.cellIDs,
                     self.cellStarts, self.cellEnds, neighbors, self.radius, self.radius):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_compute_collisions(locs, lower_bounds, grid_dims, self.cellIDs,
+            _ext.spn_compute_collisions(qlocs, locs, lower_bounds, grid_dims, self.cellIDs,
                 self.cellStarts, self.cellEnds, neighbors, 
                 self.radius, self.radius)
 
