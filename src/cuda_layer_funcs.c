@@ -22,7 +22,7 @@ int spnc_convsp_forward(const THCudaTensor* locs_t, const THCudaTensor* data_t,
     const THCudaTensor* neighbors_t,
     const THCudaTensor* weight_t, const THCudaTensor* bias_t, const float radius, 
     const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, const int dis_norm, 
-    const int kernel_fn, THCudaTensor* out_t, const size_t nshared_device_mem)
+    const int kernel_fn, const int diffdata, THCudaTensor* out_t, const size_t nshared_device_mem)
 {
 
     const float* locs = THCudaTensor_data(state, locs_t);
@@ -44,7 +44,7 @@ int spnc_convsp_forward(const THCudaTensor* locs_t, const THCudaTensor* data_t,
 
     return cuda_convsp(locs, data, neighbors, weight, bias, batch_size, N, nchannels, ndims,
         max_neighbors, nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, 
-        out, NULL, NULL, stream, nshared_device_mem);
+        diffdata, out, NULL, NULL, stream, nshared_device_mem);
 
 }
 
@@ -52,8 +52,8 @@ int spnc_convsp_backward(const THCudaTensor* locs_t, const THCudaTensor* data_t,
     const THCudaTensor* neighbors_t,
     const THCudaTensor* weight_t, const THCudaTensor* bias_t, const float radius, 
     const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, const int dis_norm, 
-    const int kernel_fn, THCudaTensor* out_t, THCudaTensor* ddata_t, THCudaTensor* dweight_t, 
-    const size_t nshared_device_mem)
+    const int kernel_fn, const int diffdata, THCudaTensor* out_t, THCudaTensor* ddata_t, 
+    THCudaTensor* dweight_t, const size_t nshared_device_mem)
 {
     const float* locs = THCudaTensor_data(state, locs_t);
     const float* data = THCudaTensor_data(state, data_t);
@@ -76,7 +76,7 @@ int spnc_convsp_backward(const THCudaTensor* locs_t, const THCudaTensor* data_t,
 
     return cuda_convsp(locs, data, neighbors, weight, bias, batch_size, N, nchannels, ndims,
         max_neighbors, nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, 
-        out, ddata, dweight, stream, nshared_device_mem);
+        diffdata, out, ddata, dweight, stream, nshared_device_mem);
 }
 
 int spnc_convsdf_forward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t, 
@@ -245,7 +245,7 @@ int spnc_convsp_forward(const void* locs_t, const void* data_t,
     const void* neighbors_t,
     const void* weight_t, const void* bias_t, const float radius, 
     const void* kernel_size_t, const void* dilation_t, const int dis_norm, 
-    const int kernel_fn, void* out_t, const size_t nshared_device_mem)
+    const int kernel_fn, const int diffdata, void* out_t, const size_t nshared_device_mem)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");
@@ -256,7 +256,7 @@ int spnc_convsp_backward(const void* locs_t, const void* data_t,
     const void* neighbors_t,
     const void* weight_t, const void* bias_t, const float radius, 
     const void* kernel_size_t, const void* dilation_t, const int dis_norm, 
-    const int kernel_fn, void* out_t, void* ddata_t, void* dweight_t, 
+    const int kernel_fn, const int diffdata, void* out_t, void* ddata_t, void* dweight_t, 
     const size_t nshared_device_mem)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"

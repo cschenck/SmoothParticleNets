@@ -15,7 +15,7 @@ int cpu_convsp(const float* locs, const float* data, const float* neighbors,
     const int batch_size, const int N, const int nchannels, const int ndims, 
     const int max_neighbors,
     const int nkernels, const int ncells, const float radius, const float* kernel_size, 
-    const float* dilation, const int dis_norm, const int kernel_fn, float* out, 
+    const float* dilation, const int dis_norm, const int kernel_fn, const int diffdata, float* out, 
     float* ddata, float* dweight);
 
 int cpu_convsdf(const float* locs, const int batch_size, const int N, const int ndims, 
@@ -35,7 +35,7 @@ int spn_convsp_forward(const THFloatTensor* locs_t, const THFloatTensor* data_t,
     const THFloatTensor* neighbors_t, const THFloatTensor* weight_t, 
     const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
-    const int dis_norm, const int kernel_fn, THFloatTensor* out_t)
+    const int dis_norm, const int kernel_fn, const int diffdata, THFloatTensor* out_t)
 {
 
     const float* locs = THFloatTensor_data(locs_t);
@@ -56,7 +56,7 @@ int spn_convsp_forward(const THFloatTensor* locs_t, const THFloatTensor* data_t,
 
     return cpu_convsp(locs, data, neighbors, weight, bias, batch_size, N, nchannels, ndims,
         max_neighbors,
-        nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, out, NULL, 
+        nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, diffdata, out, NULL, 
         NULL);
 }
 
@@ -64,7 +64,7 @@ int spn_convsp_backward(const THFloatTensor* locs_t, const THFloatTensor* data_t
     const THFloatTensor* neighbors_t, const THFloatTensor* weight_t, 
     const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
-    const int dis_norm, const int kernel_fn, THFloatTensor* out_t, 
+    const int dis_norm, const int kernel_fn, const int diffdata, THFloatTensor* out_t, 
     THFloatTensor* ddata_t, THFloatTensor* dweight_t)
 {
 
@@ -88,7 +88,7 @@ int spn_convsp_backward(const THFloatTensor* locs_t, const THFloatTensor* data_t
 
     return cpu_convsp(locs, data, neighbors, weight, bias, batch_size, N, nchannels, ndims,
         max_neighbors,
-        nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, out, 
+        nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, diffdata, out, 
         ddata, dweight);
 }
 
@@ -97,7 +97,7 @@ int cpu_convsp(const float* locs, const float* data, const float* neighbors,
     const int batch_size, const int N, const int nchannels, const int ndims, 
     const int max_neighbors,
     const int nkernels, const int ncells, const float radius, const float* kernel_size, 
-    const float* dilation, const int dis_norm, const int kernel_fn, float* out, 
+    const float* dilation, const int dis_norm, const int kernel_fn, const int diffdata, float* out, 
     float* ddata, float* dweight)
 {
     int b, n;
@@ -107,7 +107,7 @@ int cpu_convsp(const float* locs, const float* data, const float* neighbors,
         {
             compute_kernel_cells(locs, data, neighbors, weight, bias, batch_size, N, 
                 nchannels, ndims, max_neighbors, nkernels, ncells, radius, kernel_size,
-                dilation, dis_norm, kernel_fn, out, b, n, ddata, dweight, 1);
+                dilation, dis_norm, kernel_fn, diffdata, out, b, n, ddata, dweight, 1);
         }
     }
     return 1;

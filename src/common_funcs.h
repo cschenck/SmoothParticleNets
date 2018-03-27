@@ -275,8 +275,9 @@ given particle. Inputs are:
 	-radius: the radius to use when doing neighbordhood lookups around a query point.
 	-kernel_size: (ndims) the number of kernel cells in each dimension.
 	-dilation: (ndims) the size of a signal kernel cell in each dimension.
-	-kernel_fn: the id of the kernel function to use for W in the SPH equation.
 	-dis_norm: divide the SPH values by the distance to the point.
+	-kernel_fn: the id of the kernel function to use for W in the SPH equation.
+	-diffdata: take the difference between the other point's data and the query point's.
 	-out: (batch_size X N X nkernels) the partially computed output values for
 		  each particle.
 	-b: the batch index of the given particle.
@@ -315,6 +316,7 @@ void compute_kernel_cells(
 		const float* dilation,
 		const int dis_norm,
 		const int kernel_fn,
+		const int diffdata,
 		float* out, 
 		const int b,
 		const int n,
@@ -385,6 +387,14 @@ void compute_kernel_cells(
 												kernel_idx];
 						float weightjn = weight[outk*nchannels*ncells + ink*ncells + 
 													(ncells - kernel_idx - 1)];
+						float datanj = (*(data_ptrj + ink));
+						float datajn = (*(data_ptrn + ink));
+						if(diffdata)
+						{
+							float t = datanj;
+							datanj -= datajn;
+							datajn -= t;
+						}
 						
 						if(backward)
 						{
@@ -392,28 +402,36 @@ void compute_kernel_cells(
 							{
 								atomicAdd(ddata_ptrj + ink, 
 									(*(out_ptrn + outk))*weightnj*kw*norm);
+								if(diffdata)
+									atomicAdd(ddata_ptrn + ink, 
+									-(*(out_ptrn + outk))*weightnj*kw*norm);
 								if(bidirectional && j != n)
+								{
 									atomicAdd(ddata_ptrn + ink, 
 										(*(out_ptrj + outk))*weightjn*kw*norm);
+									if(diffdata)
+										atomicAdd(ddata_ptrj + ink, 
+											-(*(out_ptrj + outk))*weightjn*kw*norm);
+								}
 							}
 							if(dweight != NULL)
 							{
 								atomicAdd(dweight + outk*nchannels*ncells + 
 										  ink*ncells + kernel_idx, 
-									(*(out_ptrn + outk))*(*(data_ptrj + ink))*kw*norm);
+									(*(out_ptrn + outk))*datanj*kw*norm);
 								if(bidirectional && j != n)
 									atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + 
 											  (ncells - kernel_idx - 1), 
-										(*(out_ptrj + outk))*(*(data_ptrn + ink))*kw*norm);
+										(*(out_ptrj + outk))*datajn*kw*norm);
 							}
 						}
 						else
 						{
-							float f1 = weightnj*(*(data_ptrj + ink))*kw*norm;
+							float f1 = weightnj*datanj*kw*norm;
 							atomicAdd(out_ptrn + outk, f1);
 							if(bidirectional && j != n) 
 							{
-								float g1 = weightjn*(*(data_ptrn + ink))*kw*norm;
+								float g1 = weightjn*datajn*kw*norm;
 								atomicAdd(out_ptrj + outk, g1);
 							}
 						}

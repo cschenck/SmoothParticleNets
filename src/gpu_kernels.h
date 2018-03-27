@@ -22,6 +22,7 @@ int cuda_convsp(
 		const float* dilation, 
 		const int dis_norm, 
 		const int kernel_fn, 
+        const int diffdata,
 		float* out, 
 		float* ddata, 
 		float* dweight, 

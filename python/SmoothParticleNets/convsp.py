@@ -19,7 +19,7 @@ class ConvSP(torch.nn.Module):
     based on the distance to nearby
     """
     def __init__(self, in_channels, out_channels, ndim, kernel_size, dilation, radius,
-                    dis_norm=False, kernel_fn='poly', with_params=True):
+                    dis_norm=False, kernel_fn='poly', diffdata=False, with_params=True):
         """ Initialize a Smooth Particle Convolution layer.
 
         Arguments:
@@ -35,6 +35,10 @@ class ConvSP(torch.nn.Module):
                         for a list and explanation of all available functions.
             -dis_norm: If true, will divide by the particle-to-particle distance in the
                        SPH equation.
+            -diffdata: If true, will take the difference between the data of each particle
+                       and the query particle's data, e.g., instead of the result being
+                       \sum_j [d_j * W(d_ij)], it would be \sum_j [(d_j - d_i) * W(d_ij)]
+                       where d_k is the data associated with particle k.
             -with_params: If true, the parameters weight and bias are registered with
                           PyTorch as parameters. Otherwise they are registered as buffers,
                           meaning they won't be optimized when doing backprop.
@@ -61,6 +65,7 @@ class ConvSP(torch.nn.Module):
             "%s in " + str(KERNEL_NAMES))
         self.kernel_fn = KERNEL_NAMES.index(self.kernel_fn)
         self.dis_norm = (1 if dis_norm else 0)
+        self.diffdata = (1 if diffdata else 0)
 
         self.ncells = np.prod(self._kernel_size)
 
@@ -111,7 +116,7 @@ class ConvSP(torch.nn.Module):
 
         # Do the compution.
         convsp = _ConvSPFunction(self.radius, self.kernel_size, self.dilation,
-            self.dis_norm, self.kernel_fn, self.ncells, self.nshared_device_mem)
+            self.dis_norm, self.kernel_fn, self.diffdata, self.ncells, self.nshared_device_mem)
         # data.shape = BxCxN
         data = convsp(locs, data, neighbors, self.weight, self.bias)
         # data.shape = BxOxN
@@ -127,7 +132,7 @@ INTERNAL FUNCTIONS
 
 class _ConvSPFunction(torch.autograd.Function):
 
-    def __init__(self, radius, kernel_size, dilation, dis_norm, kernel_fn, 
+    def __init__(self, radius, kernel_size, dilation, dis_norm, kernel_fn, diffdata,
             ncells, nshared_device_mem=-1):
         super(_ConvSPFunction, self).__init__()
         self.radius = radius
@@ -135,6 +140,7 @@ class _ConvSPFunction(torch.autograd.Function):
         self.dilation = dilation
         self.dis_norm = dis_norm
         self.kernel_fn = kernel_fn
+        self.diffdata = diffdata
         self.ncells = ncells
         self.nshared_device_mem = nshared_device_mem
 
@@ -147,12 +153,12 @@ class _ConvSPFunction(torch.autograd.Function):
         ret.fill_(0)
         if locs.is_cuda:
             if not _ext.spnc_convsp_forward(locs, data, neighbors, weight, bias, self.radius, 
-                        self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret, 
-                        self.nshared_device_mem):
+                        self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, self.diffdata,
+                        ret, self.nshared_device_mem):
                 raise Exception("Cuda error")
         else:
             _ext.spn_convsp_forward(locs, data, neighbors, weight, bias, self.radius, 
-                self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret)
+                self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, self.diffdata, ret)
 
         # Add the bias.
         ret += bias.view(1, 1, nkernels)
@@ -169,11 +175,11 @@ class _ConvSPFunction(torch.autograd.Function):
         if grad_output.is_cuda:
             if not _ext.spnc_convsp_backward(locs, data, neighbors, weight, bias, self.radius, 
                         self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
-                        grad_output, ret_data, ret_weight, self.nshared_device_mem):
+                        self.diffdata, grad_output, ret_data, ret_weight, self.nshared_device_mem):
                 raise Exception("Cuda error")
         else:
             _ext.spn_convsp_backward(locs, data, neighbors, weight, bias, self.radius, 
-                self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
+                self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, self.diffdata,
                 grad_output, ret_data, ret_weight)
 
         # PyTorch requires gradients for each input, but we only care about the

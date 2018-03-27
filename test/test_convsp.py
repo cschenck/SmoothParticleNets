@@ -24,19 +24,29 @@ def w(x, h=1):
 def test_convsp(cpu=True, cuda=True):
     if cpu:
         print("Testing CPU implementation of ConvSP...")
+        print("\tWithout diffdata...")
         eval_convsp(cuda=False)
+        print("\tpassed!")
+        print("\tWith diffdata...")
+        eval_convsp(cuda=False, diffdata=True)
+        print("\tpassed!")
         print("CPU implementation passed!")
         print("")
 
     if cuda:
         if pytest_args.with_cuda:
             print("Testing CUDA implementation of ConvSP...")
+            print("\tWithout diffdata...")
             eval_convsp(cuda=True)
+            print("\tpassed!")
+            print("\tWith diffdata...")
+            eval_convsp(cuda=True, diffdata=True)
+            print("\tpassed!")
             print("CUDA implementation passed!")
         else:
             print("Not compiled with CUDA, skipping CUDA test.")
 
-def eval_convsp(cuda=False):
+def eval_convsp(cuda=False, diffdata=False):
     BATCH_SIZE = 2
     N = 10
     NDIM = 2
@@ -68,8 +78,11 @@ def eval_convsp(cuda=False):
                         - locs[b, j, :]).sum()
                     if d > RADIUS*RADIUS:
                         continue
+                    dji = data[b, j, :]
+                    if diffdata:
+                        dji = dji - data[b, i, :]
                     ground_truth[b, i, :] += weights[:, :, k].dot(
-                        w(np.sqrt(d), h=RADIUS)*data[b, j, :])
+                        w(np.sqrt(d), h=RADIUS)*dji)
     ground_truth += biases[np.newaxis, np.newaxis, :]
 
     def use_cuda(x):
@@ -97,7 +110,7 @@ def eval_convsp(cuda=False):
     reorder(idxs, ground_truth)
     ground_truth = undo_cuda(ground_truth).data.numpy()
 
-    convsp = spn.ConvSP(NCHANNELS, NKERNELS, NDIM, KERNEL_SIZE, DILATION, RADIUS)
+    convsp = spn.ConvSP(NCHANNELS, NKERNELS, NDIM, KERNEL_SIZE, DILATION, RADIUS, diffdata=diffdata)
     convsp.weight = weights
     convsp.bias = biases
     convsp = use_cuda(convsp)

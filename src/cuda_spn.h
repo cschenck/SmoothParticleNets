@@ -4,14 +4,14 @@ int spnc_convsp_forward(const THCudaTensor* locs_t, const THCudaTensor* data_t,
     const THCudaTensor* neighbors_t,
     const THCudaTensor* weight_t, const THCudaTensor* bias_t, const float radius, 
     const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, const int dis_norm, 
-    const int kernel_fn, THCudaTensor* out_t, const size_t nshared_device_mem);
+    const int kernel_fn, const int diffdata, THCudaTensor* out_t, const size_t nshared_device_mem);
 
 int spnc_convsp_backward(const THCudaTensor* locs_t, const THCudaTensor* data_t, 
     const THCudaTensor* neighbors_t,
     const THCudaTensor* weight_t, const THCudaTensor* bias_t, const float radius, 
     const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, const int dis_norm, 
-    const int kernel_fn, THCudaTensor* out_t, THCudaTensor* ddata_t, THCudaTensor* dweight_t, 
-    const size_t nshared_device_mem);
+    const int kernel_fn, const int diffdata, THCudaTensor* out_t, THCudaTensor* ddata_t, 
+    THCudaTensor* dweight_t, const size_t nshared_device_mem);
 
 int spnc_convsdf_forward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t, 
     const THCudaTensor* poses_t, const THCudaTensor* scales_t, const THCudaTensor* sdfs_t, 
