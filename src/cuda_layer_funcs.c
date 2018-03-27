@@ -18,19 +18,20 @@ size_t spnc_get_shared_mem_size(int device)
 }
 
 
-int spnc_convsp_forward(const THCudaTensor* locs_t, const THCudaTensor* data_t, 
+int spnc_convsp_forward(const THCudaTensor* qlocs_t, const THCudaTensor* locs_t, const THCudaTensor* data_t, 
     const THCudaTensor* neighbors_t,
     const THCudaTensor* weight_t, const THCudaTensor* bias_t, const float radius, 
     const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, const int dis_norm, 
     const int kernel_fn, THCudaTensor* out_t, const size_t nshared_device_mem)
 {
-
+    const float* qlocs = THCudaTensor_data(state, qlocs_t);
     const float* locs = THCudaTensor_data(state, locs_t);
     const float* data = THCudaTensor_data(state, data_t);
     const float* neighbors = THCudaTensor_data(state, neighbors_t);
     const float* weight = THCudaTensor_data(state, weight_t);
     const float* bias = THCudaTensor_data(state, bias_t);
     const int batch_size = locs_t->size[0];
+    const int M = qlocs_t->size[1];
     const int N = locs_t->size[1];
     const int nchannels = data_t->size[2];
     const int ndims = locs_t->size[2];
@@ -42,19 +43,20 @@ int spnc_convsp_forward(const THCudaTensor* locs_t, const THCudaTensor* data_t,
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_convsp(locs, data, neighbors, weight, bias, batch_size, N, nchannels, ndims,
+    return cuda_convsp(qlocs, locs, data, neighbors, weight, bias, batch_size, M, N, nchannels, ndims,
         max_neighbors, nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, 
         out, NULL, NULL, stream, nshared_device_mem);
 
 }
 
-int spnc_convsp_backward(const THCudaTensor* locs_t, const THCudaTensor* data_t, 
+int spnc_convsp_backward(const THCudaTensor* qlocs_t, const THCudaTensor* locs_t, const THCudaTensor* data_t, 
     const THCudaTensor* neighbors_t,
     const THCudaTensor* weight_t, const THCudaTensor* bias_t, const float radius, 
     const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, const int dis_norm, 
     const int kernel_fn, THCudaTensor* out_t, THCudaTensor* ddata_t, THCudaTensor* dweight_t, 
     const size_t nshared_device_mem)
 {
+    const float* qlocs = THCudaTensor_data(state, qlocs_t);
     const float* locs = THCudaTensor_data(state, locs_t);
     const float* data = THCudaTensor_data(state, data_t);
     const float* neighbors = THCudaTensor_data(state, neighbors_t);
@@ -63,6 +65,7 @@ int spnc_convsp_backward(const THCudaTensor* locs_t, const THCudaTensor* data_t,
     float* ddata = THCudaTensor_data(state, ddata_t);
     float* dweight = THCudaTensor_data(state, dweight_t);
     const int batch_size = locs_t->size[0];
+    const int M = qlocs_t->size[1];
     const int N = locs_t->size[1];
     const int nchannels = data_t->size[2];
     const int ndims = locs_t->size[2];
@@ -74,7 +77,7 @@ int spnc_convsp_backward(const THCudaTensor* locs_t, const THCudaTensor* data_t,
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
-    return cuda_convsp(locs, data, neighbors, weight, bias, batch_size, N, nchannels, ndims,
+    return cuda_convsp(qlocs, locs, data, neighbors, weight, bias, batch_size, M, N, nchannels, ndims,
         max_neighbors, nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, 
         out, ddata, dweight, stream, nshared_device_mem);
 }
@@ -241,7 +244,7 @@ size_t spnc_get_radixsort_buffer_size(void)
 
 #else
 
-int spnc_convsp_forward(const void* locs_t, const void* data_t, 
+int spnc_convsp_forward(const void* qlocs_t, const void* locs_t, const void* data_t, 
     const void* neighbors_t,
     const void* weight_t, const void* bias_t, const float radius, 
     const void* kernel_size_t, const void* dilation_t, const int dis_norm, 
@@ -252,7 +255,7 @@ int spnc_convsp_forward(const void* locs_t, const void* data_t,
     return 0;
 }
 
-int spnc_convsp_backward(const void* locs_t, const void* data_t, 
+int spnc_convsp_backward(const void* qlocs_t, const void* locs_t, const void* data_t, 
     const void* neighbors_t,
     const void* weight_t, const void* bias_t, const float radius, 
     const void* kernel_size_t, const void* dilation_t, const int dis_norm, 

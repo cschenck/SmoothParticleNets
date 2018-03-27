@@ -49,12 +49,14 @@ size_t GetSharedMemPerBlock(int device)
 
 __global__
 void kernel_convsp(
+        const float* qlocs,
 		const float* locs, 
 		const float* data, 
         const float* neighbors,
 		const float* weight, 
 		const float* bias, 
 		const int batch_size, 
+        const int M,
 		const int N, 
 		const int nchannels, 
 		const int ndims, 
@@ -68,26 +70,29 @@ void kernel_convsp(
 		const int kernel_fn, 
 		float* out, 
 		float* ddata, 
-		float* dweight)
+		float* dweight,
+        const int bidirectional)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
-    for (int i = index; i < N*batch_size; i += stride)
+    for (int i = index; i < M*batch_size; i += stride)
     {
-    	int b = i/N;
-    	int n = i%N;
-    	compute_kernel_cells(locs, data, neighbors, weight, bias, batch_size, N, 
+    	int b = i/M;
+    	int n = i%M;
+    	compute_kernel_cells(qlocs, locs, data, neighbors, weight, bias, batch_size, M, N, 
     		nchannels, ndims, max_neighbors, nkernels, ncells, radius, kernel_size, dilation, 
-    		dis_norm, kernel_fn, out, b, n, ddata, dweight, 1);
+    		dis_norm, kernel_fn, out, b, n, ddata, dweight, bidirectional);
     }
 }
 int cuda_convsp(
+        const float* qlocs,
         const float* locs, 
         const float* data, 
         const float* neighbors,
         const float* weight, 
         const float* bias, 
         const int batch_size, 
+        const int M,
         const int N, 
         const int nchannels, 
         const int ndims, 
@@ -105,14 +110,16 @@ int cuda_convsp(
         cudaStream_t stream, 
         const size_t nshared_device_mem)
 {
-	int nops = batch_size*N;
+	int nops = batch_size*M;
     int numBlocks = ceil(nops * (1.0/256));
     dim3 blocks(numBlocks);
     dim3 threads(256);
 
-	kernel_convsp<<<blocks, threads, 0, stream>>>(locs, data, neighbors, weight, bias,
-		batch_size, N, nchannels, ndims, max_neighbors, nkernels, ncells, radius, 
-        kernel_size, dilation, dis_norm, kernel_fn, out, ddata, dweight);
+    int bidirectional = (qlocs == locs) && (M == N);
+
+	kernel_convsp<<<blocks, threads, 0, stream>>>(qlocs, locs, data, neighbors, weight, bias,
+		batch_size, M, N, nchannels, ndims, max_neighbors, nkernels, ncells, radius, 
+        kernel_size, dilation, dis_norm, kernel_fn, out, ddata, dweight, bidirectional);
 	cudaDeviceSynchronize();
     return PrintOnCudaError("cuda_convsp");
 }

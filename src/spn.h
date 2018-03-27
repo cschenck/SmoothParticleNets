@@ -3,15 +3,15 @@
 int spn_max_cartesian_dim(void);
 
 
-int spn_convsp_forward(const THFloatTensor* locs_t, const THFloatTensor* data_t, 
-    const THFloatTensor* neighbors_t,
-    const THFloatTensor* weight_t, const THFloatTensor* bias_t, const float radius, 
+int spn_convsp_forward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_t, const THFloatTensor* data_t, 
+    const THFloatTensor* neighbors_t, const THFloatTensor* weight_t, 
+    const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const int dis_norm, const int kernel_fn, THFloatTensor* out_t);
 
-int spn_convsp_backward(const THFloatTensor* locs_t, const THFloatTensor* data_t, 
-    const THFloatTensor* neighbors_t,
-    const THFloatTensor* weight_t, const THFloatTensor* bias_t, const float radius, 
+int spn_convsp_backward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_t, const THFloatTensor* data_t, 
+    const THFloatTensor* neighbors_t, const THFloatTensor* weight_t, 
+    const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const int dis_norm, const int kernel_fn, THFloatTensor* out_t, 
     THFloatTensor* ddata_t, THFloatTensor* dweight_t);

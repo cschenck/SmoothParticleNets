@@ -257,18 +257,20 @@ Function that that computes the partial values for the kernel cells for a given 
 Given a particle index in a specific batch, this function loops through the given range
 of particle indices, adding their contribution to each of the kernel cells around the
 given particle. Inputs are:
+	-locs: (batch_size X M X ndims) the cartesian coordinates of all the query locations.
 	-locs: (batch_size X N X ndims) the cartesian coordinates of all the particles.
 	-data: (batch_size X N X nchannels) the features associated with each particle.
-	-neighbors: (batch_size X N X max_neighbors) a pre-computed list of neighbors for
+	-neighbors: (batch_size X M X max_neighbors) a pre-computed list of neighbors for
 				each particle. If there are fewer than max_neighbors for a given
 				particle, the list is terminated in -1.
 	-weight: (nkernels X nchannels X ncells) the kernel weights.
 	-bias: (nkernels) the kernel biases.
 	-batch_size: the size of the batch.
+	-M: the number of query locations in each batch.
 	-N: the number of particles in each batch.
 	-nchannels: the number of features per particle.
 	-ndims: the cardinality of the cartesian coordinate space.
-	-max_neighbors: the maximum number of neighbors a given particle may have.
+	-max_neighbors: the maximum number of neighbors a given query location may have.
 	-nkernels: the number of convolution kernels.
 	-ncells: the number of cells in each kernel (this is the product of all the values
 			 in kernel_size).
@@ -277,10 +279,10 @@ given particle. Inputs are:
 	-dilation: (ndims) the size of a signal kernel cell in each dimension.
 	-kernel_fn: the id of the kernel function to use for W in the SPH equation.
 	-dis_norm: divide the SPH values by the distance to the point.
-	-out: (batch_size X N X nkernels) the partially computed output values for
+	-out: (batch_size X M X nkernels) the partially computed output values for
 		  each particle.
-	-b: the batch index of the given particle.
-	-n: the particle index of the given particle.
+	-b: the batch index of the given query location.
+	-n: the query location index of the given particle.
 	-start: the particle index to start at when computing neighborhood lookups (inclusive).
 	-end: the particle index to end at when computing neighborhood lookups (exclusive).
 	-ddata: [Optional] (batch_size X N X nchannels) if not NULL, then this function will
@@ -294,16 +296,18 @@ given particle. Inputs are:
 	-bidirectional: if true, then contributions between two neighboring particles are added
 					to both particles when the particle with the lowest index is encountered.
 					When encountering the higher indexed particle, then that interaction is
-					skipped. This can give almost a 2x speedup when true.
+					skipped. This can give almost a 2x speedup when true. This assumes qlocs == locs.
 **/
 DEVICE_FUNC
 void compute_kernel_cells(
+		const float* qlocs,
 		const float* locs, 
 		const float* data, 
 		const float* neighbors,
 		const float* weight, 
 		const float* bias, 
 		const int batch_size, 
+		const int M,
 		const int N, 
 		const int nchannels, 
 		const int ndims,
@@ -320,15 +324,17 @@ void compute_kernel_cells(
 		const int n,
 		float* ddata, 
 		float* dweight,
-		const int bidirectional)
+		int bidirectional)
 {
 	int idxs[MAX_CARTESIAN_DIM];
-	const float* r = locs + (b*N + n)*ndims;
+	const float* r = qlocs + (b*M + n)*ndims;
 	int backward = ((ddata != NULL) || (dweight != NULL));
-	float* out_ptrn = out + b*nkernels*N + n*nkernels;
-	const float* data_ptrn = data + b*nchannels*N + n*nchannels;
-	float* ddata_ptrn = ddata + b*nchannels*N + n*nchannels;
-	const float* neighptr = neighbors + b*N*max_neighbors + n*max_neighbors;
+	float* out_ptrn = out + b*nkernels*M + n*nkernels;
+	const float* data_ptrn = data + b*nchannels*M + n*nchannels;
+	float* ddata_ptrn = ddata + b*nchannels*M + n*nchannels;
+	const float* neighptr = neighbors + b*M*max_neighbors + n*max_neighbors;
+
+	bidirectional = bidirectional && (locs == qlocs) && (M == N);
 
 	int j, jj;
 	for(jj = 0; jj < max_neighbors && neighptr[jj] >= 0; ++jj)
