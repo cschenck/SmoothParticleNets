@@ -63,6 +63,18 @@ float kernel_w(const float d, const float H, const int fn)
 	return KERNEL_W(d, H, fn);
 }
 
+DEVICE_FUNC
+float kernel_dw(const float d, const float H, const int fn)
+{
+	if(d > H) return 0.0f;
+	if(!VALIDATE_KERNEL_ID(fn))
+	{
+		printf("ERROR: Unknown kernel function for id %d. Returning -1.\n", fn);
+		return -1;
+	}
+	return KERNEL_DW(d, H, fn);
+}
+
 
 DEVICE_FUNC
 void swapf(float* a, float* b, int size)
@@ -256,8 +268,10 @@ float nlinear_interp(const float* grid, const float* grid_dims, const int ndims,
 Function that that computes the partial values for the kernel cells for a given particle.
 Given a particle index in a specific batch, this function loops through the given range
 of particle indices, adding their contribution to each of the kernel cells around the
-given particle. Inputs are:
-	-locs: (batch_size X M X ndims) the cartesian coordinates of all the query locations.
+given particle. If any of the derivative variables (dqlocs, dlocs, ddata, or dweight) are
+not NULL, then this funciton computes gradients instead of the output. In this case,
+the variable out is assumed to contain the derivative. Inputs are:
+	-qlocs: (batch_size X M X ndims) the cartesian coordinates of all the query locations.
 	-locs: (batch_size X N X ndims) the cartesian coordinates of all the particles.
 	-data: (batch_size X N X nchannels) the features associated with each particle.
 	-neighbors: (batch_size X M X max_neighbors) a pre-computed list of neighbors for
@@ -280,11 +294,15 @@ given particle. Inputs are:
 	-kernel_fn: the id of the kernel function to use for W in the SPH equation.
 	-dis_norm: divide the SPH values by the distance to the point.
 	-out: (batch_size X M X nkernels) the partially computed output values for
-		  each particle.
+		  each particle. If computing derivatives, contains the output derivative.
 	-b: the batch index of the given query location.
 	-n: the query location index of the given particle.
 	-start: the particle index to start at when computing neighborhood lookups (inclusive).
 	-end: the particle index to end at when computing neighborhood lookups (exclusive).
+	-dqlocs: [Optional] (batch_size X M X ndims) if not NULL, then this function will 
+			 compute the derivatives and place the one wrt to qlocs here.
+	-dlocs: [Optional] (batch_size X N X ndims) if not NULL, then this function will 
+	     	compute the derivatives and place the one wrt to locs here.
 	-ddata: [Optional] (batch_size X N X nchannels) if not NULL, then this function will
 			compute the derivative. This assumes that out is filled with the derivative
 			of the output of this layer wrt some loss, and that this is initially
@@ -322,13 +340,15 @@ void compute_kernel_cells(
 		float* out, 
 		const int b,
 		const int n,
+		float* dqlocs,
+		float* dlocs,
 		float* ddata, 
 		float* dweight,
 		int bidirectional)
 {
 	int idxs[MAX_CARTESIAN_DIM];
 	const float* r = qlocs + (b*M + n)*ndims;
-	int backward = ((ddata != NULL) || (dweight != NULL));
+	int backward = (dqlocs != NULL || dlocs != NULL || ddata != NULL || dweight != NULL);
 	float* out_ptrn = out + b*nkernels*M + n*nkernels;
 	const float* data_ptrn = data + b*nchannels*M + n*nchannels;
 	float* ddata_ptrn = ddata + b*nchannels*M + n*nchannels;
@@ -375,6 +395,9 @@ void compute_kernel_cells(
 				const float* data_ptrj = data + b*nchannels*N + j*nchannels;
 				float* ddata_ptrj = ddata + b*nchannels*N + j*nchannels;
 				float kw = kernel_w(d, radius, kernel_fn);
+				float dkw = 0;
+				if(backward)
+					dkw = kernel_dw(d, radius, kernel_fn)/d;
 				for(outk = 0; outk < nkernels; ++outk)
 				{
 					for(ink = 0; ink < nchannels; ++ink)
@@ -411,6 +434,44 @@ void compute_kernel_cells(
 									atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + 
 											  (ncells - kernel_idx - 1), 
 										(*(out_ptrj + outk))*(*(data_ptrn + ink))*kw*norm);
+							}
+							if(dqlocs != NULL && d > 0)
+							{
+								for(k = 0; k < ndims; ++k)
+								{
+									atomicAdd(dqlocs + (b*M + n)*ndims + k,
+										weightnj*(*(data_ptrj + ink))*norm*
+										dkw*(*(out_ptrj + outk))*
+											(r[k] + 
+											 (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - 
+											 r2[k]));
+									if(bidirectional && j!= n)
+										atomicAdd(dqlocs + (b*M + j)*ndims + k,
+											weightjn*(*(data_ptrn + ink))*norm*
+											dkw*(*(out_ptrj + outk))*
+												(r2[k] + 
+												 (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - 
+												 r[k]));
+								}
+							}
+							if(dlocs != NULL && d > 0)
+							{
+								for(k = 0; k < ndims; ++k)
+								{
+									atomicAdd(dlocs + (b*N + j)*ndims + k,
+										weightnj*(*(data_ptrj + ink))*norm*
+										dkw*(*(out_ptrj + outk))*
+											(r[k] + 
+											 (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - 
+											 r2[k]));
+									if(bidirectional && j!= n)
+										atomicAdd(dlocs + (b*N + n)*ndims + k,
+											weightjn*(*(data_ptrn + ink))*norm*
+											dkw*(*(out_ptrj + outk))*
+												(r2[k] + 
+												 (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - 
+												 r[k]));
+								}
 							}
 						}
 						else

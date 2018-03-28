@@ -138,11 +138,11 @@ def eval_convsp(cuda=False):
     neighbors = torch.autograd.Variable(neighbors.data, requires_grad=False)
     data = torch.autograd.Variable(data.data, requires_grad=True)
     locs = torch.autograd.Variable(locs.data, requires_grad=False)
-    def func(d, w, b):
+    def func(l, d, w, b, q):
         convsp.weight = w
         convsp.bias = b
-        return (convsp(locs, d, neighbors, qlocs),)
-    assert gradcheck(func, (data, weights, biases), eps=1e-2, atol=1e-3)
+        return (convsp(l, d, neighbors, q),)
+    assert gradcheck(func, (locs, data, weights, biases, qlocs), eps=1e-2, atol=1e-3)
 
 
 

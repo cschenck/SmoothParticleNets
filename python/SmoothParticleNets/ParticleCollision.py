@@ -118,7 +118,9 @@ class ParticleCollision(torch.nn.Module):
                         all particles within radius of each query location, up to K. If
                         there are fewer than K neighbors, -1 is used to indicate
                         the end of the neighbor list. The indices are with respect to
-                        the reordered locs tensor.
+                        the reordered locs tensor. If qlocs is not specified, then
+                        locs is used as the query points and it is reordered before
+                        being queried, so the neighbors tensor is also reorderd.
         """
 
         # Error checking.

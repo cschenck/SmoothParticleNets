@@ -25,6 +25,8 @@ int cuda_convsp(
         const int dis_norm, 
         const int kernel_fn, 
         float* out, 
+        float* dqlocs,
+        float* dlocs,
         float* ddata, 
         float* dweight, 
         cudaStream_t stream, 

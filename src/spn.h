@@ -14,6 +14,7 @@ int spn_convsp_backward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_
     const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const int dis_norm, const int kernel_fn, THFloatTensor* out_t, 
+    THFloatTensor* dqlocs_t, THFloatTensor* dlocs_t,
     THFloatTensor* ddata_t, THFloatTensor* dweight_t);
 
 int spn_convsdf_forward(const THFloatTensor* locs_t, const THFloatTensor* idxs_t, 

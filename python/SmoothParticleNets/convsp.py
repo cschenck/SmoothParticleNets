@@ -169,6 +169,10 @@ class _ConvSPFunction(torch.autograd.Function):
 
     def backward(self, grad_output):
         qlocs, locs, data, neighbors, weight, bias = self.saved_tensors
+        ret_qlocs = grad_output.new(qlocs.size())
+        ret_qlocs.fill_(0)
+        ret_locs = grad_output.new(locs.size())
+        ret_locs.fill_(0)
         ret_data = grad_output.new(data.size())
         ret_data.fill_(0)
         ret_weight = grad_output.new(weight.size())
@@ -176,17 +180,18 @@ class _ConvSPFunction(torch.autograd.Function):
         if grad_output.is_cuda:
             if not _ext.spnc_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius, 
                         self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
-                        grad_output, ret_data, ret_weight, self.nshared_device_mem):
+                        grad_output, ret_qlocs, ret_locs, ret_data, ret_weight, 
+                        self.nshared_device_mem):
                 raise Exception("Cuda error")
         else:
             _ext.spn_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius, 
                 self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
-                grad_output, ret_data, ret_weight)
+                grad_output, ret_qlocs, ret_locs, ret_data, ret_weight)
 
-        # PyTorch requires gradients for each input, but we only care about the
-        # gradients for data, so just set the rest to 0.
-        return (grad_output.new(qlocs.size()).fill_(0),
-                grad_output.new(locs.size()).fill_(0), 
+        # PyTorch requires gradients for each input, but we don't care about the
+        # gradients for neighbors, so set that to all 0s.
+        return (ret_qlocs,
+                ret_locs, 
                 ret_data, 
                 grad_output.new(neighbors.size()).fill_(0),
                 ret_weight,

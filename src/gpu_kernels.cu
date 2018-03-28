@@ -69,6 +69,8 @@ void kernel_convsp(
 		const int dis_norm, 
 		const int kernel_fn, 
 		float* out, 
+        float* dqlocs,
+        float* dlocs,
 		float* ddata, 
 		float* dweight,
         const int bidirectional)
@@ -81,7 +83,7 @@ void kernel_convsp(
     	int n = i%M;
     	compute_kernel_cells(qlocs, locs, data, neighbors, weight, bias, batch_size, M, N, 
     		nchannels, ndims, max_neighbors, nkernels, ncells, radius, kernel_size, dilation, 
-    		dis_norm, kernel_fn, out, b, n, ddata, dweight, bidirectional);
+    		dis_norm, kernel_fn, out, b, n, dqlocs, dlocs, ddata, dweight, bidirectional);
     }
 }
 int cuda_convsp(
@@ -105,6 +107,8 @@ int cuda_convsp(
         const int dis_norm, 
         const int kernel_fn, 
         float* out, 
+        float* dqlocs,
+        float* dlocs,
         float* ddata, 
         float* dweight, 
         cudaStream_t stream, 
@@ -119,7 +123,8 @@ int cuda_convsp(
 
 	kernel_convsp<<<blocks, threads, 0, stream>>>(qlocs, locs, data, neighbors, weight, bias,
 		batch_size, M, N, nchannels, ndims, max_neighbors, nkernels, ncells, radius, 
-        kernel_size, dilation, dis_norm, kernel_fn, out, ddata, dweight, bidirectional);
+        kernel_size, dilation, dis_norm, kernel_fn, out, dqlocs, dlocs, ddata, dweight, 
+        bidirectional);
 	cudaDeviceSynchronize();
     return PrintOnCudaError("cuda_convsp");
 }

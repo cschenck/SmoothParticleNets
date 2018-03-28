@@ -16,7 +16,7 @@ int cpu_convsp(const float* qlocs, const float* locs, const float* data, const f
     const int max_neighbors,
     const int nkernels, const int ncells, const float radius, const float* kernel_size, 
     const float* dilation, const int dis_norm, const int kernel_fn, float* out, 
-    float* ddata, float* dweight);
+    float* dqlocs, float* dlocs, float* ddata, float* dweight);
 
 int cpu_convsdf(const float* locs, const int batch_size, const int N, const int ndims, 
     const float* idxs, const float* poses, const float* scales, const int M, 
@@ -31,7 +31,8 @@ int spn_max_cartesian_dim(void)
     return MAX_CARTESIAN_DIM;
 }
 
-int spn_convsp_forward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_t, const THFloatTensor* data_t, 
+int spn_convsp_forward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_t, 
+    const THFloatTensor* data_t, 
     const THFloatTensor* neighbors_t, const THFloatTensor* weight_t, 
     const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
@@ -58,14 +59,16 @@ int spn_convsp_forward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_t
     return cpu_convsp(qlocs, locs, data, neighbors, weight, bias, batch_size, M, 
         N, nchannels, ndims, max_neighbors,
         nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, out, NULL, 
-        NULL);
+        NULL, NULL, NULL);
 }
 
-int spn_convsp_backward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_t, const THFloatTensor* data_t, 
+int spn_convsp_backward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_t, 
+    const THFloatTensor* data_t, 
     const THFloatTensor* neighbors_t, const THFloatTensor* weight_t, 
     const THFloatTensor* bias_t, const float radius, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
     const int dis_norm, const int kernel_fn, THFloatTensor* out_t, 
+    THFloatTensor* dqlocs_t, THFloatTensor* dlocs_t,
     THFloatTensor* ddata_t, THFloatTensor* dweight_t)
 {
     const float* qlocs = THFloatTensor_data(qlocs_t);
@@ -74,6 +77,8 @@ int spn_convsp_backward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_
     const float* neighbors = THFloatTensor_data(neighbors_t);
     const float* weight = THFloatTensor_data(weight_t);
     const float* bias = THFloatTensor_data(bias_t); 
+    float* dqlocs = THFloatTensor_data(dqlocs_t);
+    float* dlocs = THFloatTensor_data(dlocs_t);
     float* ddata = THFloatTensor_data(ddata_t);
     float* dweight = THFloatTensor_data(dweight_t);
     const int batch_size = locs_t->size[0];
@@ -91,7 +96,7 @@ int spn_convsp_backward(const THFloatTensor* qlocs_t, const THFloatTensor* locs_
     return cpu_convsp(qlocs, locs, data, neighbors, weight, bias, batch_size, M, 
         N, nchannels, ndims, max_neighbors,
         nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, out, 
-        ddata, dweight);
+        dqlocs, dlocs, ddata, dweight);
 }
 
 int cpu_convsp(const float* qlocs, const float* locs, const float* data, const float* neighbors, 
@@ -100,7 +105,7 @@ int cpu_convsp(const float* qlocs, const float* locs, const float* data, const f
     const int max_neighbors,
     const int nkernels, const int ncells, const float radius, const float* kernel_size, 
     const float* dilation, const int dis_norm, const int kernel_fn, float* out, 
-    float* ddata, float* dweight)
+    float* dqlocs, float* dlocs, float* ddata, float* dweight)
 {
     int bidirectional = (qlocs == locs) && (M == N);
     int b, n;
@@ -110,7 +115,8 @@ int cpu_convsp(const float* qlocs, const float* locs, const float* data, const f
         {
             compute_kernel_cells(qlocs, locs, data, neighbors, weight, bias, batch_size, M, N, 
                 nchannels, ndims, max_neighbors, nkernels, ncells, radius, kernel_size,
-                dilation, dis_norm, kernel_fn, out, b, n, ddata, dweight, bidirectional);
+                dilation, dis_norm, kernel_fn, out, b, n, dqlocs, dlocs, ddata, dweight, 
+                bidirectional);
         }
     }
     return 1;
