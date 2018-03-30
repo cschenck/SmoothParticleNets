@@ -16,6 +16,9 @@ parser.add_argument('--with_cuda', action="store_true", default=False)
 parser.add_argument('--debug', action="store_true", default=False)
 args = parser.parse_args()
 
+if args.debug:
+    print(">>>>> Compiling Smooth Particle Nets with debug info.")
+
 root_dir = os.path.dirname(os.path.abspath(__file__))
 lib_dir = os.path.join(root_dir, "lib")
 src_dir = os.path.join(root_dir, "src")
@@ -76,7 +79,7 @@ if args.with_cuda:
     for cuda_src in CUDA_SRCS:
         if sp.call(("nvcc -c -o %s %s -x cu -Xcompiler -fPIC -arch=sm_52 %s" 
             % (os.path.join(lib_dir, cuda_src + ".o"), os.path.join(src_dir, cuda_src),
-                "-g -G" if args.debug else "")).split()):
+                "-g -G -lineinfo" if args.debug else "")).split()):
             sys.exit(-1)
     macros.append(('WITH_CUDA', None))
     objects += [os.path.join(lib_dir, o + '.o') for o in CUDA_SRCS]

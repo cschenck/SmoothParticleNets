@@ -130,8 +130,9 @@ class ParticleCollision(torch.nn.Module):
         if data is not None:
             ec.check_tensor_dims(data, "data", (batch_size, N, -1))
             data = data.contiguous()
+            has_data = True
         else:
-            data = torch.autograd.Variable(locs.data.new(0, 0, 0), requires_grad=False)
+            has_data = False
 
         if qlocs is not None:
             ec.check_tensor_dims(qlocs, "qlocs", (batch_size, -1, self.ndim))
@@ -153,7 +154,7 @@ class ParticleCollision(torch.nn.Module):
             if self.radixsort_buffer_size < 0:
                 self.radixsort_buffer_size = _ext.spnc_get_radixsort_buffer_size()
             bufsize = max(self.radixsort_buffer_size, 
-                int(np.prod(locs.size()) + np.prod(data.size())))
+                int(np.prod(locs.size()) + (np.prod(data.size()) if has_data else 0)))
             if self.cuda_buffer.size()[0] != bufsize:
                 self.cuda_buffer.resize_(bufsize)
 
@@ -164,6 +165,8 @@ class ParticleCollision(torch.nn.Module):
             0, self.max_grid_dim))
         center = (lower_bounds + upper_bounds)/2
         lower_bounds = center - grid_dims*self.radius/2
+        lower_bounds = lower_bounds.contiguous()
+        grid_dims = grid_dims.contiguous()
 
         # Get the new hashgrid order.
         hashorder = _HashgridOrderFunction(self.radius, self.max_grid_dim, self.cellIDs,
@@ -171,14 +174,20 @@ class ParticleCollision(torch.nn.Module):
         idxs = hashorder(locs, lower_bounds, grid_dims)
 
         # Reorder the locs and data.
-        locs, data = self.reorder(idxs, locs, data)
+        if has_data:
+            locs, data = self.reorder(idxs, locs, data)
+        else:
+            locs = self.reorder(idxs, locs)
 
         # Do the collision compution.
         coll = _ParticleCollisionFunction(self.radius, self.max_collisions, self.cellIDs,
             self.cellStarts, self.cellEnds,)
         neighbors = coll(qlocs if qlocs is not None else locs, 
             locs, lower_bounds, grid_dims)
-        return locs, data, idxs, neighbors
+        if has_data:
+            return locs, data, idxs, neighbors
+        else:
+            return locs, idxs, neighbors
 
 
 
@@ -235,6 +244,9 @@ class _ParticleCollisionFunction(torch.autograd.Function):
         M = qlocs.size()[1]
         neighbors = locs.new(batch_size, M, self.max_collisions)
         neighbors.fill_(-1)
+        self.cellIDs.fill_(0)
+        self.cellStarts.fill_(0)
+        self.cellEnds.fill_(0)
         if locs.is_cuda:
             if not _ext.spnc_compute_collisions(qlocs, locs, lower_bounds, grid_dims, self.cellIDs,
                     self.cellStarts, self.cellEnds, neighbors, self.radius, self.radius):

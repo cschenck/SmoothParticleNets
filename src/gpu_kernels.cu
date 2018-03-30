@@ -450,6 +450,7 @@ int cuda_compute_collisions(
     kernel_fill_cells<<<threads, blocks, 0, stream>>>(cellIDsi, cellStarts, cellEnds, 
         batch_size, N, ncells);
     cudaStreamSynchronize(stream);
+    if(!PrintOnCudaError("compute_collisions")) return 0;
 
     nops = batch_size*N;
     numBlocks = ceil(nops * (1.0/256));
