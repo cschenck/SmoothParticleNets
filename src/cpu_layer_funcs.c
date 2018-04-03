@@ -407,8 +407,6 @@ int spn_reorder_data(THFloatTensor* locs_t,
         }
     }
 
-    memcpy(locs, nlocs, sizeof(float)*N*batch_size*ndims);
-    memcpy(data, ndata, sizeof(float)*N*batch_size*nchannels);
     return 1;
 }
 

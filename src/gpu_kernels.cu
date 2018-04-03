@@ -534,10 +534,6 @@ int cuda_reorder_data(
     // Re-order locs and data.
     kernel_reorder_data<<<threads, blocks, 0, stream>>>(locs, data, idxs, nlocs, 
         ndata, batch_size, N, ndims, nchannels, reverse);
-    cudaMemcpyAsync(locs, nlocs, sizeof(float)*N*batch_size*ndims, 
-        cudaMemcpyDeviceToDevice);
-    cudaMemcpyAsync(data, ndata, sizeof(float)*N*batch_size*nchannels, 
-        cudaMemcpyDeviceToDevice);
 
     cudaDeviceSynchronize();
     return PrintOnCudaError("cuda_reorder_data");

@@ -148,7 +148,7 @@ class ParticleCollision(torch.nn.Module):
                 buf.resize_(ns)
         if self.cellIDs.size()[1] != N or self.cellIDs.size()[0] != batch_size + 2:
             # Allocate 2 extra batches on cellIDs for sorting.
-            self.cellIDs.resize_(batch_size + 2, N)
+            self.cellIDs.resize_(batch_size + 2, N, 1)
 
         if locs.is_cuda:
             if self.radixsort_buffer_size < 0:
@@ -178,12 +178,13 @@ class ParticleCollision(torch.nn.Module):
             locs, data = self.reorder(idxs, locs, data)
         else:
             locs = self.reorder(idxs, locs)
-
+        
         # Do the collision compution.
         coll = _ParticleCollisionFunction(self.radius, self.max_collisions, self.cellIDs,
             self.cellStarts, self.cellEnds,)
         neighbors = coll(qlocs if qlocs is not None else locs, 
             locs, lower_bounds, grid_dims)
+
         if has_data:
             return locs, data, idxs, neighbors
         else:
@@ -211,6 +212,7 @@ class _HashgridOrderFunction(torch.autograd.Function):
         batch_size = locs.size()[0]
         N = locs.size()[1]
         idxs = locs.new(batch_size, N)
+        self.cellIDs.fill_(0)
         if locs.is_cuda:
             if not _ext.spnc_hashgrid_order(locs, lower_bounds, grid_dims, 
                     self.cellIDs, idxs, self.cuda_buffer, self.radius):
@@ -244,7 +246,6 @@ class _ParticleCollisionFunction(torch.autograd.Function):
         M = qlocs.size()[1]
         neighbors = locs.new(batch_size, M, self.max_collisions)
         neighbors.fill_(-1)
-        self.cellIDs.fill_(0)
         self.cellStarts.fill_(0)
         self.cellEnds.fill_(0)
         if locs.is_cuda:

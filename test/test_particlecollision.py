@@ -98,6 +98,10 @@ def eval_particlecollision(cuda=False):
             assert all(olocs[b, j, :] == nlocs[b, i, :])
             assert all(odata[b, j, :] == ndata[b, i, :])
 
+    # Make sure the input locs and data weren't altered.
+    assert np.all(undo_cuda(locs).data.numpy() == olocs)
+    assert np.all(undo_cuda(data).data.numpy() == odata)
+
     # Check the neighbor list.
     for b in range(BATCH_SIZE):
         for i in range(M):
