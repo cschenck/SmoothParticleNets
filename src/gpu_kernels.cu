@@ -216,7 +216,7 @@ int cuda_convsdf(
 {
     int nops = batch_size*N*nkernels;
     int numBlocks = ceil(nops * (1.0/256));
-    dim3 blocks(numBlocks);
+    dim3 blocks(min(MAX_BLOCKS, numBlocks));
     dim3 threads(256); 
 
     // Stack overflow happens with the default stack size (1024).
@@ -293,11 +293,12 @@ int cuda_hashgrid_order(
 
     int nops = batch_size*N;
     int numBlocks = ceil(nops * (1.0/256));
-    dim3 blocks(numBlocks);
+    dim3 blocks(min(MAX_BLOCKS, numBlocks));
     dim3 threads(256); 
-    kernel_compute_cellIDs<<<threads, blocks, 0, stream>>>(locs, low, grid_dims, cellIDsi,
+    kernel_compute_cellIDs<<<blocks, threads, 0, stream>>>(locs, low, grid_dims, cellIDsi,
         idxs, batch_size, N, ndims, cellEdge, (uint32_t*)buffer);
     cudaStreamSynchronize(stream);
+    if(!PrintOnCudaError("cuda_hashgrid_order: kernel_compute_cellIDs")) return 0; 
     uint32_t maxhash;
     cudaMemcpy(&maxhash, buffer, sizeof(uint32_t), cudaMemcpyDeviceToHost);
     uint32_t numBits = (uint32_t)ceil(log2((float)maxhash)) + 1;
@@ -441,24 +442,24 @@ int cuda_compute_collisions(
 {
     int nops = batch_size*N;
     int numBlocks = ceil(nops * (1.0/256));
-    dim3 blocks(numBlocks);
+    dim3 blocks(min(MAX_BLOCKS, numBlocks));
     dim3 threads(256); 
 
     const uint32_t* cellIDsi = (const uint32_t*) cellIDs;
 
     // Create the cell start and end lists.
-    kernel_fill_cells<<<threads, blocks, 0, stream>>>(cellIDsi, cellStarts, cellEnds, 
+    kernel_fill_cells<<<blocks, threads, 0, stream>>>(cellIDsi, cellStarts, cellEnds, 
         batch_size, N, ncells);
     cudaStreamSynchronize(stream);
     if(!PrintOnCudaError("compute_collisions")) return 0;
 
     nops = batch_size*N;
     numBlocks = ceil(nops * (1.0/256));
-    blocks = dim3(numBlocks);
+    blocks = dim3(min(MAX_BLOCKS, numBlocks));
     threads = dim3(256); 
 
     // Make collision lists.
-    kernel_compute_collisions<<<threads, blocks, 0, stream>>>(
+    kernel_compute_collisions<<<blocks, threads, 0, stream>>>(
         qlocs,
         locs,
         cellStarts,
@@ -527,12 +528,12 @@ int cuda_reorder_data(
 
     int nops = batch_size*N;
     int numBlocks = ceil(nops * (1.0/256));
-    dim3 blocks(numBlocks);
+    dim3 blocks(min(MAX_BLOCKS, numBlocks));
     dim3 threads(256); 
     
 
     // Re-order locs and data.
-    kernel_reorder_data<<<threads, blocks, 0, stream>>>(locs, data, idxs, nlocs, 
+    kernel_reorder_data<<<blocks, threads, 0, stream>>>(locs, data, idxs, nlocs, 
         ndata, batch_size, N, ndims, nchannels, reverse);
 
     cudaDeviceSynchronize();
