@@ -2,37 +2,6 @@
 KERNELS = {}
 DKERNELS = {}
 
-""" POLY:
-	\eta * \sigma * (1/4*max(0, H - d)^3 - max(0, H/2 - d)^3)
-		 H = radius
-		 d = distance
-	\sigma = 1/pi (dim norm)
-	  \eta = 8*pi/(H^3) (norm)
-"""
-KERNELS["poly"] = (
-	"8.0f/(H*H*H)*((H-d)*(H-d)*(H-d)/4.0f - (H/2.0f-d)*(H/2.0f-d)*(H/2.0f-d))")
-
-""" DPOLY:
-	3 * \eta * \sigma * (-1/4*max(0, H - d)^2 + max(0, H/2 - d)^2)
-		 H = radius
-		 d = distance
-	\sigma = 1/pi (dim norm)
-	  \eta = 8*pi/(H^3) (norm)
-"""
-KERNELS["dpoly"] = (
-	"24.0f/(H*H*H)*(-(H-d)*(H-d)/4.0f + (H/2.0f-d)*(H/2.0f-d))")
-DKERNELS["poly"] = KERNELS["dpoly"]
-
-""" DPOLY2:
-	6 * \eta * \sigma * (1/4*max(0, H - d) - max(0, H/2 - d))
-		 H = radius
-		 d = distance
-	\sigma = 1/pi (dim norm)
-	  \eta = 8*pi/(H^3) (norm)
-"""
-KERNELS["dpoly2"] = "48.0f/(H*H*H)*((H-d)/4.0f - (H/2.0f-d))"
-DKERNELS["dpoly"] = KERNELS["dpoly2"]
-DKERNELS["dpoly2"] = "36.0f/(H*H*H)"
 
 """ DEFAULT:
 	\eta * \sigma * max(0, H^2 - d^2)^3

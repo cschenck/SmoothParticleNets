@@ -19,7 +19,7 @@ class ConvSP(torch.nn.Module):
     based on the distance to nearby
     """
     def __init__(self, in_channels, out_channels, ndim, kernel_size, dilation, radius,
-                    dis_norm=False, kernel_fn='poly', with_params=True):
+                    dis_norm=False, kernel_fn='default', with_params=True):
         """ Initialize a Smooth Particle Convolution layer.
 
         Arguments:
