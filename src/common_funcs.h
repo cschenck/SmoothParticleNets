@@ -343,24 +343,19 @@ void compute_kernel_cells(
 		float* dqlocs,
 		float* dlocs,
 		float* ddata, 
-		float* dweight,
-		int bidirectional)
+		float* dweight)
 {
 	int idxs[MAX_CARTESIAN_DIM];
+	float dkw[MAX_CARTESIAN_DIM];
 	const float* r = qlocs + (b*M + n)*ndims;
 	int backward = (dqlocs != NULL || dlocs != NULL || ddata != NULL || dweight != NULL);
 	float* out_ptrn = out + b*nkernels*M + n*nkernels;
-	const float* data_ptrn = data + b*nchannels*M + n*nchannels;
-	float* ddata_ptrn = ddata + b*nchannels*M + n*nchannels;
 	const float* neighptr = neighbors + b*M*max_neighbors + n*max_neighbors;
-
-	bidirectional = bidirectional && (locs == qlocs) && (M == N);
 
 	int j, jj;
 	for(jj = 0; jj < max_neighbors && neighptr[jj] >= 0; ++jj)
 	{
 		j = neighptr[jj];
-		if(bidirectional && j < n) continue;
 		const float* r2 = locs + (b*N + j)*ndims;
 		float d = dissqr(r, r2, ndims);
 		float dd = fastroot(ndims);
@@ -391,13 +386,17 @@ void compute_kernel_cells(
 				float norm = 1.0f;
 				if(dis_norm && d > 0.0f)
 					norm /= d;
-				float* out_ptrj = out + b*nkernels*N + j*nkernels;
 				const float* data_ptrj = data + b*nchannels*N + j*nchannels;
 				float* ddata_ptrj = ddata + b*nchannels*N + j*nchannels;
 				float kw = kernel_w(d, radius, kernel_fn);
-				float dkw = 0;
 				if(backward)
-					dkw = kernel_dw(d, radius, kernel_fn)/d;
+				{
+					for(k = 0; k < ndims; ++k)
+					{
+						dkw[k] = kernel_dw(d, radius, kernel_fn)/d*
+							(r[k] + (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - r2[k]);
+					}
+				}
 				for(outk = 0; outk < nkernels; ++outk)
 				{
 					for(ink = 0; ink < nchannels; ++ink)
@@ -412,8 +411,6 @@ void compute_kernel_cells(
 						// data + b*nchannels*N + ink*N + j
 						float weightnj = weight[outk*nchannels*ncells + ink*ncells + 
 												kernel_idx];
-						float weightjn = weight[outk*nchannels*ncells + ink*ncells + 
-													(ncells - kernel_idx - 1)];
 						
 						if(backward)
 						{
@@ -421,19 +418,12 @@ void compute_kernel_cells(
 							{
 								atomicAdd(ddata_ptrj + ink, 
 									(*(out_ptrn + outk))*weightnj*kw*norm);
-								if(bidirectional && j != n)
-									atomicAdd(ddata_ptrn + ink, 
-										(*(out_ptrj + outk))*weightjn*kw*norm);
 							}
 							if(dweight != NULL)
 							{
 								atomicAdd(dweight + outk*nchannels*ncells + 
 										  ink*ncells + kernel_idx, 
 									(*(out_ptrn + outk))*(*(data_ptrj + ink))*kw*norm);
-								if(bidirectional && j != n)
-									atomicAdd(dweight + outk*nchannels*ncells + ink*ncells + 
-											  (ncells - kernel_idx - 1), 
-										(*(out_ptrj + outk))*(*(data_ptrn + ink))*kw*norm);
 							}
 							if(dqlocs != NULL && d > 0)
 							{
@@ -441,17 +431,7 @@ void compute_kernel_cells(
 								{
 									atomicAdd(dqlocs + (b*M + n)*ndims + k,
 										weightnj*(*(data_ptrj + ink))*norm*
-										dkw*(*(out_ptrj + outk))*
-											(r[k] + 
-											 (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - 
-											 r2[k]));
-									if(bidirectional && j!= n)
-										atomicAdd(dqlocs + (b*M + j)*ndims + k,
-											weightjn*(*(data_ptrn + ink))*norm*
-											dkw*(*(out_ptrj + outk))*
-												(r2[k] + 
-												 (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - 
-												 r[k]));
+										dkw[k]*(*(out_ptrn + outk)));
 								}
 							}
 							if(dlocs != NULL && d > 0)
@@ -459,18 +439,8 @@ void compute_kernel_cells(
 								for(k = 0; k < ndims; ++k)
 								{
 									atomicAdd(dlocs + (b*N + j)*ndims + k,
-										weightnj*(*(data_ptrj + ink))*norm*
-										dkw*(*(out_ptrj + outk))*
-											(r[k] + 
-											 (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - 
-											 r2[k]));
-									if(bidirectional && j!= n)
-										atomicAdd(dlocs + (b*N + n)*ndims + k,
-											weightjn*(*(data_ptrn + ink))*norm*
-											dkw*(*(out_ptrj + outk))*
-												(r2[k] + 
-												 (idxs[k] - ((int)kernel_size[k])/2)*dilation[k] - 
-												 r[k]));
+										-weightnj*(*(data_ptrj + ink))*norm*
+										dkw[k]*(*(out_ptrn + outk)));
 								}
 							}
 						}
@@ -478,11 +448,6 @@ void compute_kernel_cells(
 						{
 							float f1 = weightnj*(*(data_ptrj + ink))*kw*norm;
 							atomicAdd(out_ptrn + outk, f1);
-							if(bidirectional && j != n) 
-							{
-								float g1 = weightjn*(*(data_ptrn + ink))*kw*norm;
-								atomicAdd(out_ptrj + outk, g1);
-							}
 						}
 					}
 				}

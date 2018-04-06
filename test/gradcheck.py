@@ -64,16 +64,19 @@ def contiguous(input):
     return input
 
 
-def get_numerical_jacobian(fn, input, target, eps=1e-3):
+def get_numerical_jacobian(fn, input, eps=1e-3, use_double=False):
     # To be able to use .view(-1) input must be contiguous
     input = contiguous(input)
+    if use_double:
+        input = [torch.nn.Parameter(x.data.double()) if isinstance(x, torch.nn.Parameter) else x.double() 
+                    for x in input]
     output_size = fn(input).numel()
-    jacobian = make_jacobian(target, output_size)
+    jacobian = make_jacobian(input, output_size)
 
     # It's much easier to iterate over flattened lists of tensors.
     # These are reference to the same objects in jacobian, so any changes
     # will be reflected in it as well.
-    x_tensors = [t for t in iter_tensors(target, True)]
+    x_tensors = [t for t in iter_tensors(input, True)]
     j_tensors = [t for t in iter_tensors(jacobian)]
 
     outa = torch.DoubleTensor(output_size)
@@ -93,7 +96,7 @@ def get_numerical_jacobian(fn, input, target, eps=1e-3):
             outb.add_(-1, outa).div_(2 * eps)
             d_tensor[i] = outb
 
-    return jacobian
+    return tuple(x.float() for x in jacobian)
 
 
 def get_analytical_jacobian(input, output):
@@ -137,7 +140,8 @@ def _differentiable_outputs(x):
     return tuple(o for o in _as_tuple(x) if o.requires_grad)
 
 
-def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_exception=True):
+def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_exception=True,
+    func_numerical=None, use_double=False):
     """Check gradients computed via small finite differences
        against analytical gradients
     The check between numerical and analytical has the same behaviour as
@@ -156,6 +160,10 @@ def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_ex
         raise_exception: bool indicating whether to raise an exception if
             gradcheck fails. The exception gives more information about the
             exact nature of the failure. This is helpful when debugging gradchecks.
+        func_numerical: Python function identical to func but to be used when doing
+                        numerical derivatives.
+        use_double: If true, will pass double tensors to func when computing numerical
+                    grads.
     Returns:
         True if all differences satisfy allclose condition
     """
@@ -170,11 +178,13 @@ def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_ex
         if not o.requires_grad:
             continue
 
+        if func_numerical is None:
+            func_numerical = func
         def fn(input):
-            return _as_tuple(func(*input))[i].data
+            return _as_tuple(func_numerical(*input))[i].data
 
         analytical, reentrant, correct_grad_sizes = get_analytical_jacobian(_as_tuple(inputs), o)
-        numerical = get_numerical_jacobian(fn, inputs, inputs, eps)
+        numerical = get_numerical_jacobian(fn, inputs, eps, use_double)
 
         if reentrant > retol:
             return fail_test('not reentrant, %g exceeded reentrance tolerance of %g.' 

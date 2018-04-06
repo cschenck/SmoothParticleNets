@@ -150,7 +150,7 @@ def eval_convsdf(cuda=False):
     sdfs_t = [torch.FloatTensor(x) for x in sdfs]
     sdf_sizes_t = [np.mean([1.0*sdf_widths[i, j]/sdfs[i].shape[j] 
                     for j in range(len(sdfs[i].shape))]) for i in range(len(sdfs))] 
-    locs_t = torch.autograd.Variable(use_cuda(torch.FloatTensor(locs)), requires_grad=False)
+    locs_t = torch.autograd.Variable(use_cuda(torch.FloatTensor(locs)), requires_grad=True)
     idxs_t = torch.autograd.Variable(use_cuda(torch.FloatTensor(idxs)), requires_grad=False)
     poses_t = torch.autograd.Variable(use_cuda(torch.FloatTensor(sdf_poses)), 
                                         requires_grad=False)

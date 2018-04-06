@@ -107,7 +107,6 @@ int cpu_convsp(const float* qlocs, const float* locs, const float* data, const f
     const float* dilation, const int dis_norm, const int kernel_fn, float* out, 
     float* dqlocs, float* dlocs, float* ddata, float* dweight)
 {
-    int bidirectional = (qlocs == locs) && (M == N);
     int b, n;
     for(b = 0; b < batch_size; ++b)
     {
@@ -115,8 +114,7 @@ int cpu_convsp(const float* qlocs, const float* locs, const float* data, const f
         {
             compute_kernel_cells(qlocs, locs, data, neighbors, weight, bias, batch_size, M, N, 
                 nchannels, ndims, max_neighbors, nkernels, ncells, radius, kernel_size,
-                dilation, dis_norm, kernel_fn, out, b, n, dqlocs, dlocs, ddata, dweight, 
-                bidirectional);
+                dilation, dis_norm, kernel_fn, out, b, n, dqlocs, dlocs, ddata, dweight);
         }
     }
     return 1;

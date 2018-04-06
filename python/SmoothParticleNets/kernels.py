@@ -9,8 +9,8 @@ DKERNELS = {}
 	\sigma = 1/pi (dim norm)
 	  \eta = 8*pi/(H^3) (norm)
 """
-KERNELS["poly"] = ("8.0f/(H*H*H)*((H-d)*(H-d)*(H-d)/4.0f - "
-	"fmaxf(0.0f, H/2.0f-d)*(H/2.0f-d)*(H/2.0f-d))")
+KERNELS["poly"] = (
+	"8.0f/(H*H*H)*((H-d)*(H-d)*(H-d)/4.0f - (H/2.0f-d)*(H/2.0f-d)*(H/2.0f-d))")
 
 """ DPOLY:
 	3 * \eta * \sigma * (-1/4*max(0, H - d)^2 + max(0, H/2 - d)^2)
@@ -19,8 +19,8 @@ KERNELS["poly"] = ("8.0f/(H*H*H)*((H-d)*(H-d)*(H-d)/4.0f - "
 	\sigma = 1/pi (dim norm)
 	  \eta = 8*pi/(H^3) (norm)
 """
-KERNELS["dpoly"] = ("24.0f/(H*H*H)*(-(H-d)*(H-d)/4.0f + "
-	"fmaxf(0.0f, H/2.0f-d)*(H/2.0f-d))")
+KERNELS["dpoly"] = (
+	"24.0f/(H*H*H)*(-(H-d)*(H-d)/4.0f + (H/2.0f-d)*(H/2.0f-d))")
 DKERNELS["poly"] = KERNELS["dpoly"]
 
 """ DPOLY2:
@@ -30,9 +30,9 @@ DKERNELS["poly"] = KERNELS["dpoly"]
 	\sigma = 1/pi (dim norm)
 	  \eta = 8*pi/(H^3) (norm)
 """
-KERNELS["dpoly2"] = "42.0f/(H*H*H)*((H-d)/4.0f + fmaxf(0.0f, H/2.0f-d))"
+KERNELS["dpoly2"] = "48.0f/(H*H*H)*((H-d)/4.0f - (H/2.0f-d))"
 DKERNELS["dpoly"] = KERNELS["dpoly2"]
-DKERNELS["dpoly2"] = "42.0f/(H*H*H)*(3.0f/4.0f)"
+DKERNELS["dpoly2"] = "36.0f/(H*H*H)"
 
 """ DEFAULT:
 	\eta * \sigma * max(0, H^2 - d^2)^3
@@ -91,40 +91,9 @@ DKERNELS["pressure"] = KERNELS["dpressure"]
 	\sigma = 1/pi (dim norm)
 	  \eta = -90/(H^6) (norm)
 """
-KERNELS["dpressure2"] = "(-90.0f/(M_PI*H*H*H*H*H*H))*(H-d)*(H-2*d)/d"
+KERNELS["dpressure2"] = "(90.0f/(M_PI*H*H*H*H*H*H))*(H-d)"
 DKERNELS["dpressure"] = KERNELS["dpressure2"]
-DKERNELS["dpressure2"] = "(-90.0f/(M_PI*H*H*H*H*H*H))*(2.0f*d - 3.0f*H/2.0f)"
-
-""" VISCOSITY:
-	\eta * \sigma * (-d^3/(2*H^3) + d^2/(H^2) + H/(2*d) - 1)
-		 H = radius
-		 d = distance
-	\sigma = 1/pi (dim norm)
-	  \eta = 15/(2*H^3) (norm)
-"""
-KERNELS["viscosity"] = "(15.0f/(2*M_PI*H*H*H))*(-d*d*d/(2*H*H*H)+d*d/(H*H)+H/(2*(d+1e-15))-1)"
-
-""" DVISCOSITY:
-	\eta * \sigma * d * (-3*d/(2*H^3) + 2/(H^2) - H/(2*d^3))
-		 H = radius
-		 d = distance
-	\sigma = 1/pi (dim norm)
-	  \eta = 15/(2*H^3) (norm)
-"""
-KERNELS["dviscosity"] = (
-	"(15.0f/(2*M_PI*H*H*H))*d*(-3*d/(2*H*H*H)+2/(H*H)-H/(2*(d+1e-15)*(d+1e-15)*(d+1e-15)))")
-DKERNELS["viscosity"] = KERNELS["dviscosity"]
-
-""" DVISCOSITY2:
-	\eta * \sigma * max(0, H - d)
-		 H = radius
-		 d = distance
-	\sigma = 1/pi (dim norm)
-	  \eta = 45/(H^6) (norm)
-"""
-KERNELS["dviscosity2"] = "(45.0f/(M_PI*H*H*H*H*H*H))*(H-d)"
-DKERNELS["dviscosity"] = KERNELS["dviscosity2"]
-DKERNELS["dviscosity2"] = "(45.0f/(M_PI*H*H*H*H*H*H))*-1.0f"
+DKERNELS["dpressure2"] = "(-90.0f/(M_PI*H*H*H*H*H*H))"
 
 """ INDIRECT:
 	H - d
