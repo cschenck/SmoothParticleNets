@@ -183,7 +183,8 @@ int spnc_compute_collisions(THCudaTensor* qlocs_t,
                            THCudaTensor* cellEnds_t,
                            THCudaTensor* collisions_t,
                            const float cellEdge,
-                           const float radius)
+                           const float radius,
+                           const int include_self)
 {
     float* qlocs = THCudaTensor_data(state, qlocs_t);
     float* locs = THCudaTensor_data(state, locs_t);
@@ -203,7 +204,7 @@ int spnc_compute_collisions(THCudaTensor* qlocs_t,
 
     return cuda_compute_collisions(qlocs, locs, low, grid_dims, cellIDs, cellStarts,
         cellEnds, collisions, batch_size, M, N, ndims, max_collisions, 
-        ncells, cellEdge, radius, stream);
+        ncells, cellEdge, radius, include_self, stream);
 }
 
 int spnc_reorder_data(THCudaTensor* locs_t, 
@@ -325,7 +326,8 @@ int spnc_compute_collisions(void* qlocs_t,
                            void* cellEnds_t,
                            void* collisions_t,
                            const float cellEdge,
-                           const float radius)
+                           const float radius,
+                           const int include_self)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");

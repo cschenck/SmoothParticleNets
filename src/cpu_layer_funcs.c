@@ -291,7 +291,8 @@ int spn_compute_collisions(THFloatTensor* qlocs_t,
                            THFloatTensor* cellEnds_t,
                            THFloatTensor* collisions_t,
                            const float cellEdge,
-                           const float radius)
+                           const float radius,
+                           const int include_self)
 {
     float* qlocs = THFloatTensor_data(qlocs_t);
     float* locs = THFloatTensor_data(locs_t);
@@ -358,6 +359,7 @@ int spn_compute_collisions(THFloatTensor* qlocs_t,
                 radius*radius,
                 collisions,
                 max_collisions,
+                include_self,
                 b,
                 i);
         }

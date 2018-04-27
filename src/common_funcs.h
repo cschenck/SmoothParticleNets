@@ -715,6 +715,7 @@ void compute_collisions(
 	const float radius2,
 	float* collisions,
 	const int max_collisions,
+	const int include_self,
 	const int b,
 	const int n)
 {
@@ -752,7 +753,7 @@ void compute_collisions(
 					float nr = r[k] - locs[b*N*ndims + i*ndims + k];
 					d += nr*nr;
 				}
-				if(d < radius2)
+				if(d < radius2 && (d > 0 || include_self))
 				{
 					collisions[b*M*max_collisions + n*max_collisions + ncollisions] = i;
 					++ncollisions;

@@ -386,7 +386,8 @@ void kernel_compute_collisions(
     const float cellEdge,
     const float radius2,
     float* collisions,
-    const int max_collisions)
+    const int max_collisions,
+    const int include_self)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -411,6 +412,7 @@ void kernel_compute_collisions(
             radius2,
             collisions,
             max_collisions,
+            include_self,
             b,
             n);
     }
@@ -434,6 +436,7 @@ int cuda_compute_collisions(
     const int ncells,
     const float cellEdge,
     const float radius,
+    const int include_self,
     cudaStream_t stream)
 {
     int nops = batch_size*N;
@@ -470,7 +473,8 @@ int cuda_compute_collisions(
         cellEdge,
         radius*radius,
         collisions,
-        max_collisions);
+        max_collisions,
+        include_self);
 
     cudaStreamSynchronize(stream);
     return PrintOnCudaError("compute_collisions");

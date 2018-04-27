@@ -47,7 +47,8 @@ int spnc_compute_collisions(void* qlocs_t,
                            void* cellEnds_t,
                            void* collisions_t,
                            const float cellEdge,
-                           const float radius);
+                           const float radius,
+                           const int include_self);
 
 int spnc_reorder_data(void* locs_t, 
                          void* data_t, 

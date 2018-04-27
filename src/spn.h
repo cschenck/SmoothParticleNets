@@ -48,7 +48,8 @@ int spn_compute_collisions(THFloatTensor* qlocs_t,
                            THFloatTensor* cellEnds_t,
                            THFloatTensor* collisions_t,
                            const float cellEdge,
-                           const float radius);
+                           const float radius,
+                           const int include_self);
 
 int spn_reorder_data(THFloatTensor* locs_t, 
                          THFloatTensor* data_t, 

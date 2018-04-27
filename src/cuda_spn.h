@@ -44,7 +44,8 @@ int spnc_compute_collisions(THCudaTensor* qlocs_t,
                            THCudaTensor* cellEnds_t,
                            THCudaTensor* collisions_t,
                            const float cellEdge,
-                           const float radius);
+                           const float radius,
+                           const int include_self);
 
 int spnc_reorder_data(THCudaTensor* locs_t, 
                          THCudaTensor* data_t, 

@@ -88,6 +88,7 @@ int cuda_compute_collisions(
     const int ncells,
     const float cellEdge,
     const float radius,
+    const int include_self,
     cudaStream_t stream);
 
 int cuda_reorder_data(

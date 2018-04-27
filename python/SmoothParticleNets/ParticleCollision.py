@@ -14,6 +14,8 @@ class ReorderData(torch.nn.Module):
     """
     def __init__(self, reverse=False):
         """ TODO
+        if reverse: ret[idxs] = input
+        else: ret = input[idxs]
         """
         super(ReorderData, self).__init__()
         self.reverse = (1 if reverse else 0)
@@ -56,7 +58,7 @@ class ReorderData(torch.nn.Module):
 class ParticleCollision(torch.nn.Module):
     """ TODO
     """
-    def __init__(self, ndim, radius, max_grid_dim=96, max_collisions=128):
+    def __init__(self, ndim, radius, max_grid_dim=96, max_collisions=128, include_self=True):
         """ Initialize a Particle Collision layer.
 
         Arguments:
@@ -65,6 +67,9 @@ class ParticleCollision(torch.nn.Module):
             -max_grid_dim: The maximum size of all the dimensions for the internal hash
                            grid. Set this value lower if you are running out of memory.
             -max_collisions: The maximum number of neighbors a particle may have.
+            -include_self: If False, then if the distance between a query location and the
+                           particle is 0, that particle will not be included in that query
+                           location's neighbor list.
         """
         super(ParticleCollision, self).__init__()
         self.ndim = ec.check_conditions(ndim, "ndim", 
@@ -79,6 +84,8 @@ class ParticleCollision(torch.nn.Module):
 
         self.max_collisions = ec.check_conditions(max_collisions, "max_collisions", 
             "%s > 0", "isinstance(%s, numbers.Integral)")
+
+        self.include_self = 1 if include_self else 0
 
         self.radixsort_buffer_size = -1
 
@@ -181,7 +188,7 @@ class ParticleCollision(torch.nn.Module):
         
         # Do the collision compution.
         coll = _ParticleCollisionFunction(self.radius, self.max_collisions, self.cellIDs,
-            self.cellStarts, self.cellEnds,)
+            self.cellStarts, self.cellEnds, self.include_self)
         neighbors = coll(qlocs if qlocs is not None else locs, 
             locs, lower_bounds, grid_dims)
 
@@ -232,13 +239,15 @@ class _HashgridOrderFunction(torch.autograd.Function):
 
 class _ParticleCollisionFunction(torch.autograd.Function):
 
-    def __init__(self, radius, max_collisions, cellIDs, cellStarts, cellEnds):
+    def __init__(self, radius, max_collisions, cellIDs, cellStarts, cellEnds,
+                    include_self):
         super(_ParticleCollisionFunction, self).__init__()
         self.radius = radius
         self.max_collisions = max_collisions
         self.cellIDs = cellIDs
         self.cellStarts = cellStarts
         self.cellEnds = cellEnds
+        self.include_self = include_self
 
     def forward(self, qlocs, locs, lower_bounds, grid_dims):
         self.save_for_backward(qlocs, locs, lower_bounds, grid_dims)
@@ -250,12 +259,12 @@ class _ParticleCollisionFunction(torch.autograd.Function):
         self.cellEnds.fill_(0)
         if locs.is_cuda:
             if not _ext.spnc_compute_collisions(qlocs, locs, lower_bounds, grid_dims, self.cellIDs,
-                    self.cellStarts, self.cellEnds, neighbors, self.radius, self.radius):
+                    self.cellStarts, self.cellEnds, neighbors, self.radius, self.radius,
+                    self.include_self):
                 raise Exception("Cuda error")
         else:
             _ext.spn_compute_collisions(qlocs, locs, lower_bounds, grid_dims, self.cellIDs,
-                self.cellStarts, self.cellEnds, neighbors, 
-                self.radius, self.radius)
+                self.cellStarts, self.cellEnds, neighbors, self.radius, self.radius, self.include_self)
 
         return neighbors 
 
