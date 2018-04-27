@@ -18,10 +18,7 @@ except ImportError:
 
 
 def pyconvsp(qlocs, locs, data, weights, biases, kernel_fn, KERNEL_SIZE, RADIUS, DILATION, NKERNELS):
-    w = eval("lambda d, H: " + spn.KERNELS[kernel_fn]
-            .replace("M_PI", "np.pi")
-            .replace("fmaxf", "max")
-            .replace("f", ""))
+    w = spn.KERNEL_FN[kernel_fn]
 
     BATCH_SIZE = locs.shape[0]
     M = qlocs.shape[1]

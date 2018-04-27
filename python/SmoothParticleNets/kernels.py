@@ -108,4 +108,24 @@ DKERNELS["dspiky"] = "-15.0f/(M_PI*H*H*H)*2.0f*(-1.0f/H)/H"
 KERNELS["cohesion"] = "-6.0f*(d/H)*(d/H)*(d/H) + 7*(d/H)*(d/H) - 1"
 DKERNELS["cohesion"] = "2.0f*d*(7.0f*H - 9.0f*d)/(H*H*H)"
 
+""" SIGMOID:
+1/(1 + exp((d - C*H)*S/H))
+		 H = radius
+		 d = distance
+		 S = 20 (sharpness)
+		 C = 0.2 (center ratio)
+"""
+KERNELS["sigmoid"] = "1.0f/(1.0f + expf((d - 0.2f*H)*20.0f/H))"
+# -S*expf((d - C*H)*S/H)/(H*(expf((d - C*H)*S/H) + 1.0f)*(expf((d - C*H)*S/H) + 1.0f))
+DKERNELS["sigmoid"] = ("-20.0f*expf((d - 0.2f*H)*20.0f/H)/" + 
+	"(H*(expf((d - 0.2f*H)*20.0f/H) + 1.0f)*(expf((d - 0.2f*H)*20.0f/H) + 1.0f))")
+
 KERNEL_NAMES = sorted(KERNELS.keys())
+
+import math
+KERNEL_FN = {k : eval("lambda d, H: " + v
+			            .replace("M_PI", "math.pi")
+			            .replace("fmaxf", "max")
+			            .replace("expf", "math.exp")
+			            .replace("f", ""))
+			        for k,v in KERNELS.items()}
