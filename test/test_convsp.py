@@ -71,14 +71,6 @@ def eval_convsp(cuda=False):
     NCHANNELS = 2
     NKERNELS = 3
 
-    BATCH_SIZE = 1
-    N = 2
-    M = 2
-    NDIM = 1
-    KERNEL_SIZE = (1,)
-    NCHANNELS = 1
-    NKERNELS = 1
-
     np.random.seed(0)
 
     locs = np.random.rand(BATCH_SIZE, N, NDIM).astype(np.float32)
