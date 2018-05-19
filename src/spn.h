@@ -57,3 +57,18 @@ int spn_reorder_data(THFloatTensor* locs_t,
                          THFloatTensor* nlocs_t,
                          THFloatTensor* ndata_t,
                          const int reverse);
+
+int spn_particleprojection_forward(THFloatTensor* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   THFloatTensor* depth_mask_t,
+                                   THFloatTensor* out_t);
+
+int spn_particleprojection_backward(THFloatTensor* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   THFloatTensor* depth_mask_t,
+                                   THFloatTensor* out_t,
+                                   THFloatTensor* dlocs_t);

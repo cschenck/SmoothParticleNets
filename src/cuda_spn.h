@@ -55,3 +55,18 @@ int spnc_reorder_data(THCudaTensor* locs_t,
                          const int reverse);
 
 size_t spnc_get_radixsort_buffer_size(void);
+
+int spnc_particleprojection_forward(THCudaTensor* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   THCudaTensor* depth_mask_t,
+                                   THCudaTensor* out_t);
+
+int spnc_particleprojection_backward(THCudaTensor* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   THCudaTensor* depth_mask_t,
+                                   THCudaTensor* out_t,
+                                   THCudaTensor* dlocs_t);

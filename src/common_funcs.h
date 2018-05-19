@@ -18,6 +18,9 @@ extern "C" {
 #include "constants.h"
 #include "kernel_constants.h"
 
+#define MAX(a, b) (a > b ? a : b)
+#define MIN(a, b) (a < b ? a : b)
+
 #ifdef CUDA
 	
 DEVICE_FUNC 
@@ -184,6 +187,17 @@ float4 quaternion_mult(const float4 q1, const float4 q2)
     ret.y = q1.w*q2.y + q1.y*q2.w + q1.z*q2.x - q1.x*q2.z;
     ret.z = q1.w*q2.z + q1.z*q2.w + q1.x*q2.y - q1.y*q2.x;
     return ret;
+}
+
+DEVICE_FUNC
+float4 sub_float4(const float4 f1, const float4 f2)
+{
+	float4 ret;
+	ret.x = f1.x - f2.x;
+	ret.y = f1.y - f2.y;
+	ret.z = f1.z - f2.z;
+	ret.w = f1.w - f2.w;
+	return ret;
 }
 
 DEVICE_FUNC
@@ -771,6 +785,107 @@ void compute_collisions(
 
 	if(ncollisions < max_collisions)
 		collisions[b*M*max_collisions + n*max_collisions + ncollisions] = -1;
+}
+
+
+/**
+Function that that computes the projection of the particles onto the image plane. Projects
+each particle as a circular gaussian. Sums the contributions from every particle at each
+pixel. Note that unlike all other functions in this file, this function only works with
+particles in 3D. Inputs are:
+	-locs: (batch_size X N X 3) the cartesian coordinates of all the particles in camera
+		   space.
+	-batch_size: the size of the batch.
+	-N: the number of particles in each batch.
+	-camera_fl: focal length of the camera in pixels.
+	-width: width of the camera image.
+	-height: height of the camera image.
+	-filter_std: standard deviation of the gaussian to project.
+	-filter_scale: amount to scale the gaussian values by.
+	-depth_mask: [Optional] (batch_size X height X width) mask used to block projections of
+			     particles. For any pixel a particle projects onto, if that particle is 
+			     behind the value in the mask, the particle's contribution to that pixel is
+			     ignored.
+    -b: the batch index of the particle being projected.
+	-n: the index of the particle being projected.
+	-out: (batch_size X height X width) the output with the projection of particle n in batch
+		  b added to it. If derivatives are being computed (dlocs is not NULL), then this is
+		  assumed to contain the derivative of out wrt the loss.
+	-dlocs: [Optional] (batch_size X N X 3) if not NULL, then this function will 
+	     	compute the derivatives and place the one wrt to locs here.
+**/
+DEVICE_FUNC
+void compute_particle_projection(
+	const float* locs,
+	const int batch_size,
+	const int N,
+	const float camera_fl,
+	const int width,
+	const int height,
+	const float filter_std,
+	const float filter_scale,
+	const float* depth_mask,
+	const int n,
+	const int b,
+	float* out,
+	float* dlocs
+)
+{
+	int backward = (dlocs != NULL);
+	const float* rr = locs + (b*N + n)*3;
+	float4 r; r.x = rr[0]; r.y = rr[1]; r.z = rr[2]; r.w = 0;
+	// Can't contribute if it's behind the camera.
+	if(r.z <= 0) return;
+	float4 proj;
+	proj.x = r.x*camera_fl/r.z + width/2;
+	proj.y = r.y*camera_fl/r.z + height/2;
+	float i, j;
+	int s = ceilf(filter_std*2);
+	float s2 = s*s;
+	float f = filter_scale/(filter_std*sqrtf(2*M_PI));
+	float std2 = filter_std*filter_std;
+	for(i = MAX(proj.x - s, 0); i < width && i < proj.x + s + 1; i += 1)
+	{
+		for(j = MAX(proj.y - s, 0); j < height && j < proj.y + s + 1; j += 1)
+		{
+			int ii = i;
+			int jj = j;
+			if(*(depth_mask + b*width*height + jj*width + ii) < r.z)
+				continue;
+			float xi = ii + 0.5f;
+			float yj = jj + 0.5f;
+			float d2 = (xi - proj.x)*(xi - proj.x) + (yj - proj.y)*(yj - proj.y);
+			if(d2 > s2)
+				continue;
+			float v = f*expf(-d2/(2.0f*std2));
+			if(!backward)
+			{
+				atomicAdd(out + b*width*height + jj*width + ii, v);
+			}
+			else
+			{
+				// dL/dlocs = dL/dout*dout/dproj*dproj/dlocs
+				// dL/dout -> Given in dlocs
+				// dout/dproj -> Derivative of v wrt proj
+				//      = [(proj.x - xi)*v/std2, 
+				//         (proj.y - yj)*v/std2]
+				// dproj/locs -> Derivative of proj wrt locs
+				//      = [[camera_fl/r.z, 0], 
+				//		   [0, camera_fl/r.z], 
+				//		   [-r.x*camera_fl/(r.z*r.z), -r.y*camera_fl/(r.z*r.z)]]
+				float dLdout = *(out + b*width*height + jj*width + ii);
+				// We can multiply out dL/dout*dout/dproj*dproj/dtran and compute it
+				// all at once to get dL/dtran.
+				atomicAdd(dlocs + (b*N + n)*3 + 0, 
+					dLdout*(xi - proj.x)*v/std2*camera_fl/r.z);
+				atomicAdd(dlocs + (b*N + n)*3 + 1, 
+					dLdout*(yj - proj.y)*v/std2*camera_fl/r.z);
+				atomicAdd(dlocs + (b*N + n)*3 + 2, 
+					dLdout*v/std2*camera_fl/(r.z*r.z)*
+					((xi - proj.x)*-r.x + (yj - proj.y)*-r.y));
+			}
+		}	
+	}
 }
 
 

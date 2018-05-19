@@ -410,4 +410,67 @@ int spn_reorder_data(THFloatTensor* locs_t,
     return 1;
 }
 
+
+int spn_particleprojection_backward(THFloatTensor* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   THFloatTensor* depth_mask_t,
+                                   THFloatTensor* out_t,
+                                   THFloatTensor* dlocs_t)
+{
+    float* locs = THFloatTensor_data(locs_t);
+    float* depth_mask = THFloatTensor_data(depth_mask_t);
+    float* out = THFloatTensor_data(out_t);
+    float* dlocs = NULL;
+    if(dlocs_t != NULL)
+        dlocs = THFloatTensor_data(dlocs_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int width = out_t->size[2];
+    const int height = out_t->size[1];
+    int b, i;
+    for(b = 0; b < batch_size; ++b)
+    {
+        for(i = 0; i < N; ++i)
+        {
+            compute_particle_projection(
+                locs,
+                batch_size,
+                N,
+                camera_fl,
+                width,
+                height,
+                filter_std,
+                filter_scale,
+                depth_mask,
+                i,
+                b,
+                out,
+                dlocs
+            );
+        }
+    }
+
+    return 1;
+}
+
+int spn_particleprojection_forward(THFloatTensor* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   THFloatTensor* depth_mask_t,
+                                   THFloatTensor* out_t)
+{
+    return spn_particleprojection_backward(locs_t, 
+                                          camera_fl,
+                                          filter_std,
+                                          filter_scale,
+                                          depth_mask_t,
+                                          out_t,
+                                          NULL);
+}
+
+
+
  

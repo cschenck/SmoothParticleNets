@@ -551,6 +551,80 @@ size_t get_radixsort_buffer_size(cudaStream_t stream)
     return sortTempSize;
 }
 
+__global__
+void kernel_particleprojection(
+    const float* locs, 
+    const float camera_fl,
+    const float filter_std,
+    const float filter_scale,
+    const float* depth_mask, 
+    const int batch_size,
+    const int N,
+    const int width,
+    const int height,
+    float* out, 
+    float* dlocs)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int i;
+    for(i = index; i < N*batch_size; i += stride)
+    {
+        int b = i/N;
+        int n = i%N;
+        compute_particle_projection(
+                locs,
+                batch_size,
+                N,
+                camera_fl,
+                width,
+                height,
+                filter_std,
+                filter_scale,
+                depth_mask,
+                n,
+                b,
+                out,
+                dlocs);
+    }
+}
+int cuda_particleprojection(
+        const float* locs, 
+        const float camera_fl,
+        const float filter_std,
+        const float filter_scale,
+        const float* depth_mask, 
+        const int batch_size,
+        const int N,
+        const int width,
+        const int height,
+        float* out, 
+        float* dlocs,
+        cudaStream_t stream)
+{
+    int nops = batch_size*N;
+    int numBlocks = ceil(nops * (1.0/256));
+    dim3 blocks(min(MAX_BLOCKS, numBlocks));
+    dim3 threads(256); 
+    
+
+    // Re-order locs and data.
+    kernel_particleprojection<<<blocks, threads, 0, stream>>>(locs,
+                                                              camera_fl,
+                                                              filter_std,
+                                                              filter_scale,
+                                                              depth_mask,
+                                                              batch_size,
+                                                              N,
+                                                              width,
+                                                              height,
+                                                              out,
+                                                              dlocs);
+
+    cudaDeviceSynchronize();
+    return PrintOnCudaError("cuda_particleprojection");
+}
+
 
 #ifdef __cplusplus
 //}

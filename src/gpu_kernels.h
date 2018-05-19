@@ -106,6 +106,20 @@ int cuda_reorder_data(
 
 size_t get_radixsort_buffer_size(cudaStream_t stream);
 
+int cuda_particleprojection(
+        const float* locs, 
+        const float camera_fl,
+        const float filter_std,
+        const float filter_scale,
+        const float* depth_mask, 
+        const int batch_size,
+        const int N,
+        const int width,
+        const int height,
+        float* out, 
+        float* dlocs,
+        cudaStream_t stream);
+
 #ifdef __cplusplus
 }
 #endif

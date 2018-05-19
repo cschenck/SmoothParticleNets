@@ -247,6 +247,68 @@ size_t spnc_get_radixsort_buffer_size(void)
     return get_radixsort_buffer_size(stream);
 }
 
+int spnc_particleprojection_forward(THCudaTensor* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   THCudaTensor* depth_mask_t,
+                                   THCudaTensor* out_t)
+{
+    float* locs = THCudaTensor_data(state, locs_t);
+    float* depth_mask = THCudaTensor_data(state, depth_mask_t);
+    float* out = THCudaTensor_data(state, out_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int width = depth_mask_t->size[2];
+    const int height = depth_mask_t->size[1];
+    cudaStream_t stream = THCState_getCurrentStream(state);
+
+    return cuda_particleprojection(locs,
+                                   camera_fl,
+                                   filter_std,
+                                   filter_scale,
+                                   depth_mask,
+                                   batch_size,
+                                   N,
+                                   width,
+                                   height,
+                                   out,
+                                   NULL,
+                                   stream);
+}
+
+int spnc_particleprojection_backward(THCudaTensor* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   THCudaTensor* depth_mask_t,
+                                   THCudaTensor* out_t,
+                                   THCudaTensor* dlocs_t)
+{
+    float* locs = THCudaTensor_data(state, locs_t);
+    float* depth_mask = THCudaTensor_data(state, depth_mask_t);
+    float* out = THCudaTensor_data(state, out_t);
+    float* dlocs = THCudaTensor_data(state, dlocs_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int width = depth_mask_t->size[2];
+    const int height = depth_mask_t->size[1];
+    cudaStream_t stream = THCState_getCurrentStream(state);
+
+    return cuda_particleprojection(locs,
+                                   camera_fl,
+                                   filter_std,
+                                   filter_scale,
+                                   depth_mask,
+                                   batch_size,
+                                   N,
+                                   width,
+                                   height,
+                                   out,
+                                   dlocs,
+                                   stream);
+}
+
 
 #else
 
@@ -346,6 +408,31 @@ int spnc_reorder_data(void* locs_t,
 }
 
 size_t spnc_get_radixsort_buffer_size(void)
+{
+    fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
+                     "Please recompile with the --with_cuda flag\n.");
+    return 0;
+}
+
+int spnc_particleprojection_forward(void* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   void* depth_mask_t,
+                                   void* out_t)
+{
+    fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
+                     "Please recompile with the --with_cuda flag\n.");
+    return 0;
+}
+
+int spnc_particleprojection_backward(void* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   void* depth_mask_t,
+                                   void* out_t,
+                                   void* dlocs_t)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");

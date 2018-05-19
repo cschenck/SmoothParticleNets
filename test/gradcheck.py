@@ -79,8 +79,12 @@ def get_numerical_jacobian(fn, input, eps=1e-3, use_double=False):
     x_tensors = [t for t in iter_tensors(input, True)]
     j_tensors = [t for t in iter_tensors(jacobian)]
 
-    outa = torch.DoubleTensor(output_size)
-    outb = torch.DoubleTensor(output_size)
+    if use_double:
+        outa = torch.DoubleTensor(output_size)
+        outb = torch.DoubleTensor(output_size)
+    else:
+        outa = torch.FloatTensor(output_size)
+        outb = torch.FloatTensor(output_size)
 
     # TODO: compare structure
     for x_tensor, d_tensor in zip(x_tensors, j_tensors):
@@ -193,6 +197,19 @@ def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_ex
         for j, (a, n) in enumerate(zip(analytical, numerical)):
             if a.numel() != 0 or n.numel() != 0:
                 if not ((a - n).abs() <= (atol + rtol * n.abs())).all():
+                    import cutil
+                    import numpy as np
+                    import cv2
+                    a = a.numpy()
+                    n = n.numpy()
+                    cv2.imshow("a", np.abs(a).sum(axis=0).reshape(2, 90, 120)[0, ...])
+                    cv2.imshow("n", np.abs(n).sum(axis=0).reshape(2, 90, 120)[0, ...])
+                    cv2.imshow("n-a", np.abs(n - a).sum(axis=0).reshape(2, 90, 120)[0, ...])
+                    cv2.imshow("n-a[x]", np.abs(n[::3, :] - a[::3, :]).sum(axis=0).reshape(2, 90, 120)[0, ...])
+                    cv2.imshow("n-a[y]", np.abs(n[1::3, :] - a[1::3, :]).sum(axis=0).reshape(2, 90, 120)[0, ...])
+                    cv2.imshow("n-a[z]", np.abs(n[2::3, :] - a[2::3, :]).sum(axis=0).reshape(2, 90, 120)[0, ...])
+                    cv2.waitKey(0)
+                    cutil.keyboard()
                     return fail_test('for output no. %d,\n numerical:%s\nanalytical:%s\n' % (j, numerical, analytical))
 
         if not correct_grad_sizes:

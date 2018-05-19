@@ -58,3 +58,18 @@ int spnc_reorder_data(void* locs_t,
                          const int reverse);
 
 size_t spnc_get_radixsort_buffer_size(void);
+
+int spnc_particleprojection_forward(void* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   void* depth_mask_t,
+                                   void* out_t);
+
+int spnc_particleprojection_backward(void* locs_t,
+                                   const float camera_fl,
+                                   const float filter_std,
+                                   const float filter_scale,
+                                   void* depth_mask_t,
+                                   void* out_t,
+                                   void* dlocs_t);
