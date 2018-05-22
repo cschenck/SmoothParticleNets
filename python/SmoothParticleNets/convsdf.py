@@ -54,7 +54,7 @@ class ConvSDF(torch.nn.Module):
             "len(%s.size()) == " + str(ndim)) for i, sdf in enumerate(sdfs)]
         self._sdf_shapes = ec.list2tensor([list(x.size()) + [self.cell_sizes[i],] 
             for i, x in enumerate(self._sdfs)])
-        self._sdfs = [x.view(-1) for x in self._sdfs]
+        self._sdfs = [x.contiguous().view(-1) for x in self._sdfs]
         self._sdf_offsets = ec.list2tensor([0,] + 
             np.cumsum([x.size()[0] for x in self._sdfs])[:-1].tolist())
         self._sdfs = torch.cat(self._sdfs)
