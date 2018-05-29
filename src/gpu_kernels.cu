@@ -148,7 +148,9 @@ void kernel_convsdf(
     const float* dilation, 
     const float max_distance, 
     float* out, 
-    float* dweight)
+    float* dlocs,
+    float* dweight,
+    float* dposes)
 {
     int _isdf_cache[64];
     float _fsdf_cache[64];
@@ -177,7 +179,7 @@ void kernel_convsdf(
         compute_sdf_kernel_cells(locs, batch_size, N, ndims, idxs, poses, 
                     scales, M, pose_len, sdfs, sdf_offsets, sdf_shapes, weight, bias, 
                     nkernels, ncells, kernel_size, dilation, max_distance, out, b, n,
-                    outk, dweight, isdf_cache, fsdf_cache);
+                    outk, dlocs, dweight, dposes, isdf_cache, fsdf_cache);
     }
 
     if(M >= 64)
@@ -207,7 +209,9 @@ int cuda_convsdf(
     const float* dilation, 
     const float max_distance, 
     float* out, 
+    float* dlocs,
     float* dweight, 
+    float* dposes,
     cudaStream_t stream)
 {
     int nops = batch_size*N*nkernels;
@@ -225,7 +229,7 @@ int cuda_convsdf(
 
     kernel_convsdf<<<blocks, threads, 0, stream>>>(locs, batch_size, N, ndims, idxs, poses,
         scales, M, pose_len, sdfs, sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, 
-        kernel_size, dilation, max_distance, out, dweight);
+        kernel_size, dilation, max_distance, out, dlocs, dweight, dposes);
     cudaDeviceSynchronize();
     return PrintOnCudaError("cuda_convsdf");
 }

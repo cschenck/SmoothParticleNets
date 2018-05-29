@@ -28,7 +28,7 @@ int spnc_convsdf_backward(const void* locs_t, const void* idxs_t,
     const void* sdf_offsets_t, const void* sdf_shapes_t, 
     const void* weight_t, const void* bias_t, 
     const void* kernel_size_t, const void* dilation_t, 
-    const float max_distance, void* out_t, void* dweight_t);
+    const float max_distance, void* out_t, void* dlocs_t, void* dweight_t, void* dposes_t);
 
 int spnc_hashgrid_order(void* locs_t, 
                            void* lower_bounds_t,

@@ -114,7 +114,7 @@ int spnc_convsdf_forward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t,
 
     return cuda_convsdf(locs, batch_size, N, ndims, idxs, poses, scales, M, pose_len, sdfs, 
         sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, kernel_size, dilation, 
-        max_distance, out, NULL, stream);
+        max_distance, out, NULL, NULL, NULL, stream);
 }
 
 int spnc_convsdf_backward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t, 
@@ -122,7 +122,8 @@ int spnc_convsdf_backward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t
     const THCudaTensor* sdf_offsets_t, const THCudaTensor* sdf_shapes_t, 
     const THCudaTensor* weight_t, const THCudaTensor* bias_t, 
     const THCudaTensor* kernel_size_t, const THCudaTensor* dilation_t, 
-    const float max_distance, THCudaTensor* out_t, THCudaTensor* dweight_t)
+    const float max_distance, THCudaTensor* out_t, THCudaTensor* dlocs_t, 
+    THCudaTensor* dweight_t, THCudaTensor* dposes_t)
 {
     const float* locs = THCudaTensor_data(state, locs_t);
     const float* idxs = THCudaTensor_data(state, idxs_t);
@@ -133,7 +134,9 @@ int spnc_convsdf_backward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t
     const float* sdf_shapes = THCudaTensor_data(state, sdf_shapes_t);
     const float* weight = THCudaTensor_data(state, weight_t);
     const float* bias = THCudaTensor_data(state, bias_t); 
+    float* dlocs = THCudaTensor_data(state, dlocs_t); 
     float* dweight = THCudaTensor_data(state, dweight_t); 
+    float* dposes = THCudaTensor_data(state, dposes_t); 
     const int batch_size = locs_t->size[0];
     const int N = locs_t->size[1];
     const int ndims = locs_t->size[2];
@@ -146,9 +149,13 @@ int spnc_convsdf_backward(const THCudaTensor* locs_t, const THCudaTensor* idxs_t
     float* out = THCudaTensor_data(state, out_t);
     cudaStream_t stream = THCState_getCurrentStream(state);
 
+    // Computing dposes will cause lots of thread clashes, so only compute it if absolutely necessary.
+    if(dposes_t->size[0] != batch_size)
+        dposes = NULL;
+
     return cuda_convsdf(locs, batch_size, N, ndims, idxs, poses, scales, M, pose_len, sdfs, 
         sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, kernel_size, dilation, 
-        max_distance, out, dweight, stream);
+        max_distance, out, dlocs, dweight, dposes, stream);
 }
 
 int spnc_hashgrid_order(THCudaTensor* locs_t, 
@@ -352,7 +359,7 @@ int spnc_convsdf_backward(const void* locs_t, const void* idxs_t,
     const void* sdf_offsets_t, const void* sdf_shapes_t, 
     const void* weight_t, const void* bias_t, 
     const void* kernel_size_t, const void* dilation_t, 
-    const float max_distance, void* out_t, void* dweight_t)
+    const float max_distance, void* out_t, void* dlocs_t, void* dweight_t, void* dposes_t)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");

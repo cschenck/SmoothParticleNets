@@ -30,7 +30,8 @@ int spn_convsdf_backward(const THFloatTensor* locs_t, const THFloatTensor* idxs_
     const THFloatTensor* sdf_offsets_t, const THFloatTensor* sdf_shapes_t, 
     const THFloatTensor* weight_t, const THFloatTensor* bias_t, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
-    const float max_distance, THFloatTensor* out_t, THFloatTensor* dweight_t);
+    const float max_distance, THFloatTensor* out_t, THFloatTensor* dlocs_t, 
+    THFloatTensor* dweight_t, THFloatTensor* dposes_t);
 
 int spn_hashgrid_order(THFloatTensor* locs_t, 
                            THFloatTensor* lower_bounds_t,

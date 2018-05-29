@@ -23,7 +23,7 @@ int cpu_convsdf(const float* locs, const int batch_size, const int N, const int 
     const int pose_len, const float* sdfs, const float* sdf_offsets, const float* sdf_shapes, 
     const float* weight, const float* bias, const int nkernels, const int ncells, 
     const float* kernel_size, const float* dilation, const float max_distance, 
-    float* out, float* dweight);
+    float* out, float* dlocs, float* dweight, float* dposes);
 
 
 int spn_max_cartesian_dim(void)
@@ -154,7 +154,7 @@ int spn_convsdf_forward(const THFloatTensor* locs_t, const THFloatTensor* idxs_t
 
     return cpu_convsdf(locs, batch_size, N, ndims, idxs, poses, scales, M, pose_len, sdfs, 
         sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, kernel_size, dilation, 
-        max_distance, out, NULL);
+        max_distance, out, NULL, NULL, NULL);
 }
 
 int spn_convsdf_backward(const THFloatTensor* locs_t, const THFloatTensor* idxs_t, 
@@ -162,7 +162,8 @@ int spn_convsdf_backward(const THFloatTensor* locs_t, const THFloatTensor* idxs_
     const THFloatTensor* sdf_offsets_t, const THFloatTensor* sdf_shapes_t, 
     const THFloatTensor* weight_t, const THFloatTensor* bias_t, 
     const THFloatTensor* kernel_size_t, const THFloatTensor* dilation_t, 
-    const float max_distance, THFloatTensor* out_t, THFloatTensor* dweight_t)
+    const float max_distance, THFloatTensor* out_t, THFloatTensor* dlocs_t, 
+    THFloatTensor* dweight_t, THFloatTensor* dposes_t)
 {
 
     const float* locs = THFloatTensor_data(locs_t);
@@ -174,7 +175,9 @@ int spn_convsdf_backward(const THFloatTensor* locs_t, const THFloatTensor* idxs_
     const float* sdf_shapes = THFloatTensor_data(sdf_shapes_t);
     const float* weight = THFloatTensor_data(weight_t);
     const float* bias = THFloatTensor_data(bias_t); 
+    float* dlocs = THFloatTensor_data(dlocs_t); 
     float* dweight = THFloatTensor_data(dweight_t); 
+    float* dposes = THFloatTensor_data(dposes_t); 
     const int batch_size = locs_t->size[0];
     const int N = locs_t->size[1];
     const int ndims = locs_t->size[2];
@@ -186,9 +189,13 @@ int spn_convsdf_backward(const THFloatTensor* locs_t, const THFloatTensor* idxs_
     const float* dilation = THFloatTensor_data(dilation_t);
     float* out = THFloatTensor_data(out_t);
 
+    // Computing dposes will cause lots of thread clashes, so only compute it if absolutely necessary.
+    if(dposes_t->size[0] != batch_size)
+        dposes = NULL;
+
     return cpu_convsdf(locs, batch_size, N, ndims, idxs, poses, scales, M, pose_len, sdfs, 
         sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, kernel_size, dilation, 
-        max_distance, out, dweight);
+        max_distance, out, dlocs, dweight, dposes);
 }
 
 int cpu_convsdf(const float* locs, const int batch_size, const int N, const int ndims, 
@@ -196,7 +203,7 @@ int cpu_convsdf(const float* locs, const int batch_size, const int N, const int 
     const int pose_len, const float* sdfs, const float* sdf_offsets, const float* sdf_shapes, 
     const float* weight, const float* bias, const int nkernels, const int ncells, 
     const float* kernel_size, const float* dilation, const float max_distance, 
-    float* out, float* dweight)
+    float* out, float* dlocs, float* dweight, float* dposes)
 {
     int* isdf_cache = (int*)malloc(sizeof(int)*M);
     float* fsdf_cache = (float*)malloc(sizeof(float)*M);
@@ -210,7 +217,7 @@ int cpu_convsdf(const float* locs, const int batch_size, const int N, const int 
                 compute_sdf_kernel_cells(locs, batch_size, N, ndims, idxs, poses, 
                     scales, M, pose_len, sdfs, sdf_offsets, sdf_shapes, weight, bias, 
                     nkernels, ncells, kernel_size, dilation, max_distance, out, b, n,
-                    outk, dweight, isdf_cache, fsdf_cache);
+                    outk, dlocs, dweight, dposes, isdf_cache, fsdf_cache);
             }
         }
     }

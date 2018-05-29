@@ -77,9 +77,11 @@ def eval_convsdf(cuda=False):
     M = 30
     NDIM = 3
     KERNEL_SIZE = (3, 5, 3)
-    DILATION = 0.05
+    DILATION = 0.001
     NKERNELS = 2
     MAX_DISTANCE = 13.37
+
+    M = 1
 
     np.random.seed(0)
 
@@ -100,6 +102,7 @@ def eval_convsdf(cuda=False):
     sdfs = [sdf1, sdf2, sdf3]
 
     sdf_poses = np.random.rand(BATCH_SIZE, M, 7)
+    sdf_poses[..., :3] -= 1.5
     # Convert axis angle to quaternion
     sdf_poses[..., 3:-1] *= np.sin(sdf_poses[..., -1, np.newaxis]/2)
     sdf_poses[..., -1] = np.cos(sdf_poses[..., -1]/2)
@@ -107,7 +110,7 @@ def eval_convsdf(cuda=False):
 
     idxs = np.random.randint(0, 3, size=(BATCH_SIZE, M))
     idxs[-1, -1] = -1
-    scales = np.random.rand(BATCH_SIZE, M)*0.5 + 0.5
+    scales = np.random.rand(BATCH_SIZE, M) + 0.5
 
     sdf_fns = [RegularGridInterpolator(
                     [np.linspace(0.5, y - 0.5, y)*s/y
@@ -153,14 +156,14 @@ def eval_convsdf(cuda=False):
     locs_t = torch.autograd.Variable(use_cuda(torch.FloatTensor(locs)), requires_grad=True)
     idxs_t = torch.autograd.Variable(use_cuda(torch.FloatTensor(idxs)), requires_grad=False)
     poses_t = torch.autograd.Variable(use_cuda(torch.FloatTensor(sdf_poses)), 
-                                        requires_grad=False)
+                                        requires_grad=True)
     scales_t = torch.autograd.Variable(use_cuda(torch.FloatTensor(scales)), 
                                         requires_grad=False)
     weights_t = torch.nn.Parameter(torch.FloatTensor(weights), requires_grad=True)
     biases_t = torch.nn.Parameter(torch.FloatTensor(biases), requires_grad=True)
 
     convsdf = spn.ConvSDF(sdfs_t, sdf_sizes_t, NKERNELS, NDIM, KERNEL_SIZE, DILATION, 
-                            MAX_DISTANCE)
+                            MAX_DISTANCE, compute_pose_grads=True)
     convsdf.weight = weights_t
     convsdf.bias = biases_t
     convsdf = use_cuda(convsdf)
@@ -169,11 +172,21 @@ def eval_convsdf(cuda=False):
 
     np.testing.assert_array_almost_equal(pred.data.numpy(), ground_truth, decimal=3)
 
-    def func(w, b):
+    # def func(l, w, b, pp):
+    #     _pp = torch.cat((pp, poses_t[..., -4:]), 2)
+    #     convsdf.weight = w
+    #     convsdf.bias = b
+    #     return (convsdf(l, idxs_t, _pp, scales_t),)
+    # assert gradcheck(func, (locs_t, weights_t, biases_t, poses_t[..., :3]), eps=1e-2, atol=1e-3)
+    # def func(pp):
+    #     # _pp = torch.cat((pp, poses_t[..., -4:]), 2)
+    #     return (convsdf(locs_t, idxs_t, pp, scales_t),)
+    # assert gradcheck(func, (poses_t,), eps=1e-6, atol=1e-3)
+    def func(l, w, b):
         convsdf.weight = w
         convsdf.bias = b
-        return (convsdf(locs_t, idxs_t, poses_t, scales_t),)
-    assert gradcheck(func, (weights_t, biases_t), eps=1e-2, atol=1e-3)
+        return (convsdf(l, idxs_t, poses_t, scales_t),)
+    assert gradcheck(func, (locs_t, weights_t, biases_t), eps=1e-2, atol=1e-3)
     
     
 def quaternionMult(q1, q2):

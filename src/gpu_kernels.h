@@ -53,7 +53,9 @@ int cuda_convsdf(
     const float* dilation, 
     const float max_distance, 
     float* out, 
+    float* dlocs,
     float* dweight, 
+    float* dposes,
     cudaStream_t stream);
 
 size_t GetSharedMemPerBlock(int device);

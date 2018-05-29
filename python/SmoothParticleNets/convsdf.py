@@ -13,7 +13,7 @@ class ConvSDF(torch.nn.Module):
     """ TODO
     """
     def __init__(self, sdfs, sdf_sizes, out_channels, ndim, kernel_size, dilation, 
-                    max_distance, with_params=True):
+                    max_distance, with_params=True, compute_pose_grads=False):
         """ Initialize a SDF Convolution layer.
 
         Arguments:
@@ -31,6 +31,9 @@ class ConvSDF(torch.nn.Module):
             -with_params: If true, the parameters weight and bias are registered with
                           PyTorch as parameters. Otherwise they are registered as buffers,
                           meaning they won't be optimized when doing backprop.
+            -compute_pose_grads: If False, will not compute grads wrt to the sdfposes during
+                                 backpropagation. This is done to increase speed when
+                                 gradients are not neede for the sdf poses.
         """
         super(ConvSDF, self).__init__()
         self.nkernels = ec.check_conditions(out_channels, "out_channels",
@@ -69,6 +72,8 @@ class ConvSDF(torch.nn.Module):
                 torch.Tensor(self.nkernels, self.ncells)))
             self.register_buffer("bias", torch.autograd.Variable(
                 torch.Tensor(self.nkernels)))
+
+        self.compute_pose_grads = (True if compute_pose_grads else False)
 
         self._kernel_size = ec.list2tensor(self._kernel_size)
         self._dilation = ec.list2tensor(self._dilation)
@@ -122,7 +127,7 @@ class ConvSDF(torch.nn.Module):
 
         # Do the compution.
         convsdf = _ConvSDFFunction(self.sdfs, self.sdf_offsets, self.sdf_shapes,
-            self.kernel_size, self.dilation, self.max_distance)
+            self.kernel_size, self.dilation, self.max_distance, self.compute_pose_grads)
         return convsdf(locs, idxs, poses, scales, self.weight, self.bias)
 
 
@@ -135,7 +140,7 @@ INTERNAL FUNCTIONS
 
 class _ConvSDFFunction(torch.autograd.Function):
 
-    def __init__(self, sdfs, sdf_offsets, sdf_shapes, kernel_size, dilation, max_distance):
+    def __init__(self, sdfs, sdf_offsets, sdf_shapes, kernel_size, dilation, max_distance, compute_pose_grads):
         super(_ConvSDFFunction, self).__init__()
         self.sdfs = sdfs
         self.sdf_offsets = sdf_offsets
@@ -143,6 +148,7 @@ class _ConvSDFFunction(torch.autograd.Function):
         self.kernel_size = kernel_size
         self.dilation = dilation
         self.max_distance = max_distance
+        self.compute_pose_grads = compute_pose_grads
 
     def forward(self, locs, idxs, poses, scales, weight, bias):
         self.save_for_backward(locs, idxs, poses, scales, weight, bias)
@@ -166,23 +172,34 @@ class _ConvSDFFunction(torch.autograd.Function):
 
     def backward(self, grad_output):
         locs, idxs, poses, scales, weight, bias = self.saved_tensors
+        ret_locs = grad_output.new(locs.size())
+        ret_locs.fill_(0)
         ret_weight = grad_output.new(weight.size())
         ret_weight.fill_(0)
+        if self.compute_pose_grads:
+            ret_poses = grad_output.new(poses.size())
+        else:
+            ret_poses = grad_output.new(poses.size()[0] + 1)
+        ret_poses.fill_(0)
         if grad_output.is_cuda:
             if not _ext.spnc_convsdf_backward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
                 self.sdf_shapes, weight, bias, self.kernel_size, self.dilation, 
-                self.max_distance, grad_output, ret_weight):
+                self.max_distance, grad_output, ret_locs, ret_weight, ret_poses):
                 raise Exception("Cuda error")
         else:
             _ext.spn_convsdf_backward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
                 self.sdf_shapes, weight, bias, self.kernel_size, self.dilation, 
-                self.max_distance, grad_output, ret_weight)
+                self.max_distance, grad_output, ret_locs, ret_weight, ret_poses)
+
+        if not self.compute_pose_grads:
+            ret_poses = grad_output.new(poses.size())
+            ret_poses.fill_(0)
 
         # PyTorch requires gradients for each input, but we only care about the
         # gradients for weight and bias, so set the rest to 0.
-        return (grad_output.new(locs.size()).fill_(0), 
+        return (ret_locs, 
                 grad_output.new(idxs.size()).fill_(0),
-                grad_output.new(poses.size()).fill_(0), 
+                ret_poses, 
                 grad_output.new(scales.size()).fill_(0), 
                 ret_weight,
                 grad_output.sum(1).sum(0))

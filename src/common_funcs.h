@@ -201,32 +201,32 @@ float4 sub_float4(const float4 f1, const float4 f2)
 }
 
 DEVICE_FUNC
-void point_in_coordinate_frame(const float* point, const int ndims, 
-	const float* translation, const float* rotation, float* out)
+void rotate_point(float* point, const int ndims, const float* rotation, int reverse)
 {
 	float m, theta;
 	float4 r, p;
-	int i;
-	for(i = 0; i < ndims; ++i)
-		out[i] = point[i] - translation[i];
+	int rev = (reverse ? -1 : 1);
 	switch(ndims)
 	{
 		case 1:
 			break;
 		case 2:
-			m = sqrtf(out[0]*out[0] + out[1]*out[1]);
-			theta = atan2f(out[1], out[0]) - rotation[0];
-			out[0] = m*cosf(theta);
-			out[1] = m*sinf(theta);
+			m = sqrtf(point[0]*point[0] + point[1]*point[1]);
+			theta = atan2f(point[1], point[0]) - rotation[0];
+			point[0] = m*cosf(rev*theta);
+			point[1] = m*sinf(rev*theta);
 			break;
 		case 3:
 			r.x = rotation[0]; r.y = rotation[1]; r.z = rotation[2]; r.w = rotation[3];
-			p.x = out[0]; p.y = out[1]; p.z = out[2];
+			p.x = point[0]; p.y = point[1]; p.z = point[2];
 			p.w = 0.0f;
-			p = quaternion_mult(quaternion_conjugate(r), quaternion_mult(p, r));
-			out[0] = p.x;
-			out[1] = p.y;
-			out[2] = p.z;
+			if(reverse)
+				p = quaternion_mult(quaternion_conjugate(r), quaternion_mult(p, r));
+			else
+				p = quaternion_mult(r, quaternion_mult(p, quaternion_conjugate(r)));
+			point[0] = p.x;
+			point[1] = p.y;
+			point[2] = p.z;
 			break;
 		default:
 			printf("ERROR: Rotations in %d dimensional space are not supported!\n", ndims);
@@ -235,8 +235,89 @@ void point_in_coordinate_frame(const float* point, const int ndims,
 }
 
 DEVICE_FUNC
+void drotate_point(const float* point, const int ndims, const float* rotation, int reverse, 
+	const float* doutdpoint, float* doutdrotation)
+{
+	// int i, j, k;
+	// float pp[3];
+	// float base[3];
+	// float rr[4];
+	float4 r, p;
+	switch(ndims)
+	{
+		case 1:
+			break;
+		case 3:
+			// for(k = 0; k < 3; ++k) base[k] = point[k];
+			// for(k = 0; k < 4; ++k) rr[k] = rotation[k];
+			// rotate_point(base, ndims, rotation, reverse);
+			// for(i = 0; i < 4; ++i)
+			// {
+			// 	doutdrotation[i] = 0.0f;
+			// 	for(k = 0; k < 3; ++k) pp[k] = point[k];
+			// 	rr[i] += 1e-6;
+			// 	rotate_point(pp, ndims, rr, reverse);
+			// 	rr[i] -= 1e-6;
+			// 	for(j = 0; j < 3; ++j)
+			// 		doutdrotation[i] += doutdpoint[j]*(pp[j] - base[j])/1e-6;
+			// }
+			// printf(" %f,%f,%f,%f\n", doutdrotation[0], doutdrotation[1], doutdrotation[2],
+			// 	doutdrotation[3]);
+			r.x = rotation[0]; r.y = rotation[1]; r.z = rotation[2]; r.w = rotation[3];
+			p.x = point[0]; p.y = point[1]; p.z = point[2];
+			p.w = 0.0f;
+			if(reverse)
+			{
+				doutdrotation[0] = doutdpoint[0]*(2*p.x*r.x + 2*p.y*r.y + 2*p.z*r.z) + 
+				                   doutdpoint[1]*(2*p.x*r.y - 2*p.y*r.x + 2*p.z*r.w) + 
+				                   doutdpoint[2]*(2*p.x*r.z - 2*p.y*r.w - 2*p.z*r.x);
+				doutdrotation[1] = doutdpoint[0]*(-2*p.x*r.y + 2*p.y*r.x - 2*p.z*r.w) + 
+				                   doutdpoint[1]*(2*p.x*r.x + 2*p.y*r.y + 2*p.z*r.z) + 
+				                   doutdpoint[2]*(2*p.x*r.w + 2*p.y*r.z - 2*p.z*r.y);
+				doutdrotation[2] = doutdpoint[0]*(-2*p.x*r.z + 2*p.y*r.w + 2*p.z*r.x) + 
+				                   doutdpoint[1]*(-2*p.x*r.w - 2*p.y*r.z + 2*p.z*r.y) + 
+				                   doutdpoint[2]*(2*p.x*r.x + 2*p.y*r.y + 2*p.z*r.z);
+				doutdrotation[3] = doutdpoint[0]*(2*p.x*r.w + 2*p.y*r.z - 2*p.z*r.y) + 
+				                   doutdpoint[1]*(-2*p.x*r.z + 2*p.y*r.w + 2*p.z*r.x) + 
+				                   doutdpoint[2]*(2*p.x*r.y - 2*p.y*r.x + 2*p.z*r.w);
+			}
+			else
+			{
+				doutdrotation[0] = doutdpoint[0]*(2*p.x*r.x + 2*p.y*r.y + 2*p.z*r.z) + 
+				                   doutdpoint[1]*(2*p.x*r.y - 2*p.y*r.x - 2*p.z*r.w) + 
+				                   doutdpoint[2]*(2*p.x*r.z + 2*p.y*r.w - 2*p.z*r.x);
+				doutdrotation[1] = doutdpoint[0]*(-2*p.x*r.y + 2*p.y*r.x + 2*p.z*r.w) + 
+				                   doutdpoint[1]*(2*p.x*r.x + 2*p.y*r.y + 2*p.z*r.z) + 
+				                   doutdpoint[2]*(-2*p.x*r.w + 2*p.y*r.z - 2*p.z*r.y);
+				doutdrotation[2] = doutdpoint[0]*(-2*p.x*r.z - 2*p.y*r.w + 2*p.z*r.x) + 
+				                   doutdpoint[1]*(2*p.x*r.w - 2*p.y*r.z + 2*p.z*r.y) + 
+				                   doutdpoint[2]*(2*p.x*r.x + 2*p.y*r.y + 2*p.z*r.z);
+				doutdrotation[3] = doutdpoint[0]*(2*p.x*r.w - 2*p.y*r.z + 2*p.z*r.y) + 
+				                   doutdpoint[1]*(2*p.x*r.z + 2*p.y*r.w - 2*p.z*r.x) + 
+				                   doutdpoint[2]*(-2*p.x*r.y + 2*p.y*r.x + 2*p.z*r.w);
+			}
+			// printf(">%f,%f,%f,%f\n", doutdrotation[0], doutdrotation[1], doutdrotation[2],
+			// 	doutdrotation[3]);
+			break;
+		default:
+			printf("ERROR: Rotations in %d dimensional space are not supported!\n", ndims);
+			break;
+	}
+}
+
+DEVICE_FUNC
+void point_in_coordinate_frame(const float* point, const int ndims, 
+	const float* translation, const float* rotation, float* out)
+{
+	int i;
+	for(i = 0; i < ndims; ++i)
+		out[i] = point[i] - translation[i];
+	rotate_point(out, ndims, rotation, 1);
+}
+
+DEVICE_FUNC
 float rec_nlinear_interp(const float* grid, const float* grid_dims, const int ndims, 
-						const float* point01, int* lowidx, const int curdim)
+						const float* point01, int* lowidx, const int curdim, float* dpoint)
 {
 	int i, j, k;
 	if(curdim == ndims)
@@ -253,17 +334,27 @@ float rec_nlinear_interp(const float* grid, const float* grid_dims, const int nd
 	}	
 	else
 	{
-		float v1 = rec_nlinear_interp(grid, grid_dims, ndims, point01, lowidx, curdim + 1);
+		float dpoint1[MAX_CARTESIAN_DIM];
+		float* dp1 = (dpoint != NULL ? dpoint1 : NULL);
+		float v1 = rec_nlinear_interp(grid, grid_dims, ndims, point01, lowidx, curdim + 1, dp1);
 		lowidx[curdim] += 1;
-		float v2 = rec_nlinear_interp(grid, grid_dims, ndims, point01, lowidx, curdim + 1);
+		float dpoint2[MAX_CARTESIAN_DIM];
+		float* dp2 = (dpoint != NULL ? dpoint2 : NULL);
+		float v2 = rec_nlinear_interp(grid, grid_dims, ndims, point01, lowidx, curdim + 1, dp2);
 		lowidx[curdim] -= 1;
+		if(dpoint != NULL)
+		{
+			dpoint[curdim] = -v1 + v2;
+			for(i = curdim + 1; i < ndims; ++i)
+				dpoint[i] = (1 - point01[curdim])*dp1[i] + point01[curdim]*dp2[i];
+		}
 		return (1 - point01[curdim])*v1 + point01[curdim]*v2;
 	}
 }
 
 DEVICE_FUNC
 float nlinear_interp(const float* grid, const float* grid_dims, const int ndims, 
-	const float cell_size, const float* point)
+	const float cell_size, const float* point, float* dpoint)
 {
 	int lowidx[MAX_CARTESIAN_DIM];
 	float point01[MAX_CARTESIAN_DIM];
@@ -274,7 +365,13 @@ float nlinear_interp(const float* grid, const float* grid_dims, const int ndims,
 		lowidx[i] = (int)point01[i];
 		point01[i] = point01[i] - floorf(point01[i]);
 	}
-	return rec_nlinear_interp(grid, grid_dims, ndims, point01, lowidx, 0);
+	float ret = rec_nlinear_interp(grid, grid_dims, ndims, point01, lowidx, 0, dpoint);
+	if(dpoint != NULL)
+	{
+		for(i = 0; i < ndims; ++i)
+			dpoint[i] /= cell_size;
+	}
+	return ret;
 }
 
 
@@ -522,9 +619,15 @@ stores them in out at that location's and kernel's index. The inputs are:
 	-b: the batch index of the given query location.
 	-n: the particle index of the given query location.
 	-outk: the index of the output kernel to sum for.
+	-dlocs [Optional] (batch_size X N X ndims) if not NULL then the derivative wrt to
+		   the locs is computed INSTEAD OF the partial sum. Assumes that out
+		   contains the already computed sum.
 	-dweight [Optional] (nkernels X ncells) if not NULL then the derivative wrt to
 			 the weights is computed INSTEAD OF the partial sum. Assumes that out
 			 contains the already computed sum.
+	-dposes [Optional] (batch_size X M X pose_len) if not NULL then the derivative wrt to
+			the poses is computed INSTEAD OF the partial sum. Assumes that out
+			contains the already computed sum.
 	-isdf_cache: (M) a pre-allocated int cache for this function to use. This is passed
 				 as an argument instead of being allocated in the function itself to
 				 improve efficiency.
@@ -557,12 +660,14 @@ void compute_sdf_kernel_cells(
 		const int b, 
 		const int n, 
 		const int outk, 
-		float* dweight, 
+		float* dlocs,
+		float* dweight,
+		float* dposes, 
 		int* isdf_cache, 
 		float* fsdf_cache)
 {
 	float r2[MAX_CARTESIAN_DIM];
-	int backward = (dweight != NULL);
+	int backward = (dweight != NULL || dlocs != NULL || dposes != NULL);
 
 	int i;
 	for(i = 0; i < M; ++i)
@@ -610,7 +715,7 @@ void compute_sdf_kernel_cells(
 		if(!isdf_cache[m] || !inbounds)
 			continue;
 		float v = nlinear_interp(sdfs + (int)sdf_offsets[mm], sdf_shapes + mm*(ndims + 1), 
-			ndims, cell_size, r2)*scales[b*M + m];
+			ndims, cell_size, r2, NULL)*scales[b*M + m];
 		fsdf_cache[m] = v;
 		// TODO: This is causing issues with the tests. For now we won't use 
 		// biggest_minVal to weed out SDFs.
@@ -639,10 +744,17 @@ void compute_sdf_kernel_cells(
 		for(i = 0; i < ndims; ++i)
 			pt[i] = r[i] + (kidxs[i] - ((int)kernel_size[i]/2))*dilation[i];
 		float smallest = max_distance;
+		int smallest_m = -1;
+		float s_dloc[MAX_CARTESIAN_DIM];
+		float dloc[MAX_CARTESIAN_DIM];
+		for(i = 0; i < ndims; ++i)
+			s_dloc[i] = 0.0f;
 		for(m = 0; m < M; ++m)
 		{
 			if(!isdf_cache[m])
 				continue;
+			
+			float* dl = (backward ? dloc : NULL);
 			int mm = (int)idxs[b*M + m];
 			float cell_size = sdf_shapes[mm*(ndims + 1) + ndims]*scales[b*M + m];
 			point_in_coordinate_frame(pt, ndims, poses + b*M*pose_len + m*pose_len, 
@@ -656,14 +768,53 @@ void compute_sdf_kernel_cells(
 			}
 			if(!inbounds) continue;
 			float v = nlinear_interp(sdfs + (int)sdf_offsets[mm], sdf_shapes + mm*(ndims + 1), 
-				ndims, cell_size, r2)*scales[b*M + m];
+				ndims, cell_size, r2, dl)*scales[b*M + m];
 			if(v < smallest)
+			{
 				smallest = v;
+				smallest_m = m;
+				if(backward)
+				{
+					for(i = 0; i < ndims; ++i)
+						dloc[i] *= scales[b*M + m];
+					rotate_point(dl, ndims, poses + b*M*pose_len + m*pose_len + ndims, 0);
+					for(i = 0; i < ndims; ++i)
+						s_dloc[i] = dloc[i];
+				}
+			}
 		}
 		if(backward)
-			atomicAdd(dweight + outk*ncells + kernel_idx, smallest*(*out_ptr));
+		{
+			if(dweight != NULL)
+				atomicAdd(dweight + outk*ncells + kernel_idx, smallest*(*out_ptr));
+			if(dlocs != NULL)
+			{
+				for(i = 0; i < ndims; ++i)
+					atomicAdd(dlocs + (b*N + n)*ndims + i, 
+						s_dloc[i]*(*out_ptr)*weight[outk*ncells + kernel_idx]);
+			}
+			if(dposes != NULL)
+			{
+				for(i = 0; i < ndims; ++i)
+					atomicAdd(dposes + b*M*pose_len + smallest_m*pose_len + i, 
+						-s_dloc[i]*(*out_ptr)*weight[outk*ncells + kernel_idx]);
+				// dL/dq = dL/dv*dv/dq
+				// dv/dq = dv/dr2*dr2/dq
+				// Rotate s_dloc back so we can plug it in to the above.
+				rotate_point(s_dloc, ndims, poses + b*M*pose_len + smallest_m*pose_len + ndims, 1);
+				for(i = 0; i < ndims; ++i)
+					dloc[i] = pt[i] - poses[b*M*pose_len + smallest_m*pose_len + i];
+				drotate_point(dloc, ndims, poses + b*M*pose_len + smallest_m*pose_len + ndims, 1,
+					s_dloc, r2);
+				for(i = 0; i < pose_len - ndims; ++i)
+					atomicAdd(dposes + b*M*pose_len + smallest_m*pose_len + ndims + i,
+								r2[i]*(*out_ptr)*weight[outk*ncells + kernel_idx]);
+			}
+		}
 		else
+		{
 			*out_ptr += weight[outk*ncells + kernel_idx]*smallest;
+		}
 		++kidxs[0];
 		for(k = 0; k < ndims - 1 && kidxs[k] >= kernel_size[k]; ++k)
 		{
@@ -850,7 +1001,8 @@ void compute_particle_projection(
 		{
 			int ii = i;
 			int jj = j;
-			if(*(depth_mask + b*width*height + jj*width + ii) < r.z)
+			float depth_val = *(depth_mask + b*width*height + jj*width + ii);
+			if(depth_val > 0.0f && depth_val < r.z)
 				continue;
 			float xi = ii + 0.5f;
 			float yj = jj + 0.5f;
