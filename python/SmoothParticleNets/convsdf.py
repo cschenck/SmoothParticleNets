@@ -51,16 +51,10 @@ class ConvSDF(torch.nn.Module):
         self._dilation = ec.make_list(dilation, ndim, "dilation", 
             "%s >= 0", "isinstance(%s, numbers.Real)")
 
-        self.cell_sizes = [ec.check_conditions(x, "sdf_sizes[%d]"%i, "%s > 0",
-            "isinstance(%s, numbers.Real)") for i, x in enumerate(sdf_sizes)]
-        self._sdfs = [ec.check_conditions(sdf, "sdfs[%d]"%i, "isinstance(%s, torch.Tensor)",
-            "len(%s.size()) == " + str(ndim)) for i, sdf in enumerate(sdfs)]
-        self._sdf_shapes = ec.list2tensor([list(x.size()) + [self.cell_sizes[i],] 
-            for i, x in enumerate(self._sdfs)])
-        self._sdfs = [x.contiguous().view(-1) for x in self._sdfs]
-        self._sdf_offsets = ec.list2tensor([0,] + 
-            np.cumsum([x.size()[0] for x in self._sdfs])[:-1].tolist())
-        self._sdfs = torch.cat(self._sdfs)
+        self.register_buffer("sdfs", torch.zeros(1))
+        self.register_buffer("sdf_shapes", torch.zeros(1))
+        self.register_buffer("sdf_offsets", torch.zeros(1))
+        self.SetSDFs(sdfs, sdf_sizes)
 
         self.ncells = np.prod(self._kernel_size)
         if with_params:
@@ -80,9 +74,24 @@ class ConvSDF(torch.nn.Module):
 
         self.register_buffer("kernel_size", self._kernel_size)
         self.register_buffer("dilation", self._dilation)
-        self.register_buffer("sdfs", self._sdfs)
-        self.register_buffer("sdf_shapes", self._sdf_shapes)
-        self.register_buffer("sdf_offsets", self._sdf_offsets)
+
+    def SetSDFs(self, sdfs, sdf_sizes):
+        cell_sizes = [ec.check_conditions(x, "sdf_sizes[%d]"%i, "%s > 0",
+            "isinstance(%s, numbers.Real)") for i, x in enumerate(sdf_sizes)]
+        _sdfs = [ec.check_conditions(sdf, "sdfs[%d]"%i, "isinstance(%s, torch.Tensor)",
+            "len(%s.size()) == " + str(self.ndim)) for i, sdf in enumerate(sdfs)]
+        _sdf_shapes = ec.list2tensor([list(x.size()) + [cell_sizes[i],] 
+            for i, x in enumerate(_sdfs)])
+        _sdfs = [x.contiguous().view(-1) for x in _sdfs]
+        _sdf_offsets = ec.list2tensor([0,] + 
+            np.cumsum([x.size()[0] for x in _sdfs])[:-1].tolist())
+        _sdfs = torch.cat(_sdfs)
+        self.sdfs.resize_(_sdfs.size())
+        self.sdfs[...] = _sdfs
+        self.sdf_shapes.resize_(_sdf_shapes.size())
+        self.sdf_shapes[...] = _sdf_shapes
+        self.sdf_offsets.resize_(_sdf_offsets.size())
+        self.sdf_offsets[...] = _sdf_offsets
 
     def forward(self, locs, idxs, poses, scales):
         """ Compute a forward pass of the SDF Convolution Layer.
@@ -171,6 +180,7 @@ class _ConvSDFFunction(torch.autograd.Function):
 
 
     def backward(self, grad_output):
+        grad_output = grad_output.contiguous()
         locs, idxs, poses, scales, weight, bias = self.saved_tensors
         ret_locs = grad_output.new(locs.size())
         ret_locs.fill_(0)
@@ -194,6 +204,21 @@ class _ConvSDFFunction(torch.autograd.Function):
         if not self.compute_pose_grads:
             ret_poses = grad_output.new(poses.size())
             ret_poses.fill_(0)
+
+        # TODO: There's a bug in the analytical gradients wrt rotations. Use numerical for now.
+        # I cannot for the life of me get gradients through qauternion rotation right.
+        if self.compute_pose_grads:
+            # ret_poses = grad_output.new(poses.size())
+            # ret_poses.fill_(0)
+            baseline = self.forward(locs, idxs, poses, scales, weight, bias)
+            for m in range(poses.size()[1]):
+                for i in range(locs.size()[-1], poses.size()[2]):
+                    poses[:, m, i] += 1e-3
+                    nn = self.forward(locs, idxs, poses, scales, weight, bias)
+                    poses[:, m, i] -= 1e-3
+                    gg = (nn - baseline)/1e-3
+                    ret_poses[:, m, i] = torch.sum(torch.sum(gg*grad_output, 1), 1)
+
 
         # PyTorch requires gradients for each input, but we only care about the
         # gradients for weight and bias, so set the rest to 0.

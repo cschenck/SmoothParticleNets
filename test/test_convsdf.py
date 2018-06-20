@@ -181,12 +181,34 @@ def eval_convsdf(cuda=False):
     # def func(pp):
     #     # _pp = torch.cat((pp, poses_t[..., -4:]), 2)
     #     return (convsdf(locs_t, idxs_t, pp, scales_t),)
-    # assert gradcheck(func, (poses_t,), eps=1e-6, atol=1e-3)
+    # assert gradcheck(func, (poses_t,), eps=1e-4, atol=1e-3)
     def func(l, w, b):
         convsdf.weight = w
         convsdf.bias = b
         return (convsdf(l, idxs_t, poses_t, scales_t),)
     assert gradcheck(func, (locs_t, weights_t, biases_t), eps=1e-2, atol=1e-3)
+
+    test_2d_loc_grads()
+
+
+def test_2d_loc_grads():
+    sdfs = [torch.from_numpy(np.array([[0, 0.5], [0.5, 1]], dtype=np.float32)),]
+    convsdf = spn.ConvSDF(sdfs, [1,], 1, 2, 1, 1, 
+                max_distance=1, with_params=False, compute_pose_grads=False)
+    convsdf.weight.data.fill_(1)
+    convsdf.bias.data.fill_(0)
+    locs = []
+    for x in np.arange(0.51, 1.49, 2.0/100):
+        for y in np.arange(0.51, 1.49, 2.0/100):
+            locs.append([x, y])
+    locs_t = torch.autograd.Variable(torch.from_numpy(np.array([locs], dtype=np.float32)), 
+        requires_grad=True)
+    idxs_t = torch.autograd.Variable(torch.from_numpy(np.array([[0]], dtype=np.float32)))
+    poses_t = torch.autograd.Variable(torch.from_numpy(np.array([[[0, 0, 0]]], dtype=np.float32)))
+    scales_t = torch.autograd.Variable(torch.from_numpy(np.array([[1]], dtype=np.float32)))
+    def func(l):
+        return (convsdf(l, idxs_t, poses_t, scales_t),)
+    assert gradcheck(func, (locs_t,), eps=1e-3, atol=1e-3)
     
     
 def quaternionMult(q1, q2):

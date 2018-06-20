@@ -212,9 +212,9 @@ void rotate_point(float* point, const int ndims, const float* rotation, int reve
 			break;
 		case 2:
 			m = sqrtf(point[0]*point[0] + point[1]*point[1]);
-			theta = atan2f(point[1], point[0]) - rotation[0];
-			point[0] = m*cosf(rev*theta);
-			point[1] = m*sinf(rev*theta);
+			theta = atan2f(point[1], point[0]) + rev*rotation[0];
+			point[0] = m*cosf(theta);
+			point[1] = m*sinf(theta);
 			break;
 		case 3:
 			r.x = rotation[0]; r.y = rotation[1]; r.z = rotation[2]; r.w = rotation[3];
@@ -243,10 +243,19 @@ void drotate_point(const float* point, const int ndims, const float* rotation, i
 	// float base[3];
 	// float rr[4];
 	float4 r, p;
+	float m, theta;
+	int rev;
 	switch(ndims)
 	{
 		case 1:
 			break;
+		case 2:
+			rev = (reverse ? -1 : 1);
+			m = sqrtf(point[0]*point[0] + point[1]*point[1]);
+			theta = atan2f(point[1], point[0]) + rev*rotation[0];
+			doutdrotation[0] = doutdpoint[0]*m*rev*-sinf(theta) + 
+							   doutdpoint[1]*m*rev*cosf(theta);
+		    break;			
 		case 3:
 			// for(k = 0; k < 3; ++k) base[k] = point[k];
 			// for(k = 0; k < 4; ++k) rr[k] = rotation[k];
