@@ -12,10 +12,25 @@ from kernels import KERNELS, KERNEL_NAMES
 MAX_FLOAT = float(np.finfo(np.float32).max)
 
 class ParticleProjection(torch.nn.Module):
-    """ 
+    """ The particle projection layer. Projects the given set of particles onto
+    a camera image plane. For each particle, this layer finds its location on
+    the image plane, then adds a small circular Gaussian centered at that location
+    to the image. The contributions from all particles are added together into
+    a final image. Note that unlike the other layers in this package, this layer
+    only works with 3D particles.
     """
     def __init__(self, camera_fl, camera_size, filter_std, filter_scale):
-        """ 
+        """ Initialize a ParticleProjection layer.
+
+        Arguments:
+            -camera_fl: The camera focal length in pixels (all pixels are
+                        assumed to be square. This layer does not simulate
+                        any image warping e.g. radial distortion).
+            -camera_size: 2-tuple with the image width and height in pixels.
+            -filter_std: The standard deviation of the Gaussian that is
+                         added at each pixel location.
+            -filter_scale: Before adding the Gaussian for an individual
+                           particle, it is scaled by this value.
         """
         super(ParticleProjection, self).__init__()
 
@@ -65,7 +80,26 @@ class ParticleProjection(torch.nn.Module):
         return torch.autograd.Variable(ret, requires_grad=False)
 
     def forward(self, locs, camera_pose, camera_rot, depth_mask=None):
-        """ 
+        """ Forwad pass for the particle projection. Takes in the set of
+        particles and outputs an image.
+
+        Arguments:
+            -locs: A BxNx3 tensor where B is the batch size, N is the number
+                   of particles, and 3 is the dimensionality of the 
+                   particles' coordinate space (this layer currently only
+                   supports 3D projections).
+            -camera_pose: A Bx3 tensor containing the camera translation.
+            -camera_rot: A Bx4 tensor containing the camera rotation as a
+                         quaternion in xyzw format.
+            -depth_mask: An optional BxHxW tensor where W and H are the
+                         camera image width and height respectively. If not
+                         None, then this is used to compute occlusions. The
+                         value in each pixel in the depth_mask should be
+                         the distance to the first object. Any particles
+                         further away than that value will not be projected
+                         onto the output image.
+
+        Returns: A BxHxW tensor of the projected particles.
         """
 
         # Error checking.
