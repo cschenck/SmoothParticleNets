@@ -122,6 +122,21 @@ int cuda_particleprojection(
         float* dlocs,
         cudaStream_t stream);
 
+int cuda_imageprojection(
+        const float* locs, 
+        const float* image,
+        const float camera_fl,
+        const float* depth_mask, 
+        const int batch_size,
+        const int N,
+        const int width,
+        const int height,
+        const int channels,
+        float* out, 
+        float* dlocs,
+        float* dimage,
+        cudaStream_t stream);
+
 #ifdef __cplusplus
 }
 #endif

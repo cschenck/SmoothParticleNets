@@ -630,6 +630,85 @@ int cuda_particleprojection(
 }
 
 
+__global__
+void kernel_imageprojection(
+    const float* locs, 
+        const float* image,
+        const float camera_fl,
+        const float* depth_mask, 
+        const int batch_size,
+        const int N,
+        const int width,
+        const int height,
+        const int channels,
+        float* out, 
+        float* dlocs,
+        float* dimage)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int i;
+    for(i = index; i < N*batch_size; i += stride)
+    {
+        int b = i/N;
+        int n = i%N;
+        compute_image_projection(
+                locs,
+                image,
+                batch_size,
+                N,
+                camera_fl,
+                width,
+                height,
+                channels,
+                depth_mask,
+                n,
+                b,
+                out,
+                dlocs,
+                dimage);
+    }
+}
+int cuda_imageprojection(
+        const float* locs, 
+        const float* image,
+        const float camera_fl,
+        const float* depth_mask, 
+        const int batch_size,
+        const int N,
+        const int width,
+        const int height,
+        const int channels,
+        float* out, 
+        float* dlocs,
+        float* dimage,
+        cudaStream_t stream)
+{
+    int nops = batch_size*N;
+    int numBlocks = ceil(nops * (1.0/256));
+    dim3 blocks(min(MAX_BLOCKS, numBlocks));
+    dim3 threads(256); 
+    
+
+    // Re-order locs and data.
+    kernel_imageprojection<<<blocks, threads, 0, stream>>>(locs,
+                                                              image,
+                                                              camera_fl,
+                                                              depth_mask,
+                                                              batch_size,
+                                                              N,
+                                                              width,
+                                                              height,
+                                                              channels,
+                                                              out,
+                                                              dlocs,
+                                                              dimage);
+
+    cudaDeviceSynchronize();
+    return PrintOnCudaError("cuda_imageprojection");
+}
+
+
 #ifdef __cplusplus
 //}
 #endif

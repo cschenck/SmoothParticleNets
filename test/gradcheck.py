@@ -197,8 +197,8 @@ def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_ex
         for j, (a, n) in enumerate(zip(analytical, numerical)):
             if a.numel() != 0 or n.numel() != 0:
                 if not ((a - n).abs() <= (atol + rtol * n.abs())).all():
-                    # import cutil
-                    # cutil.keyboard("Gradcheck failed! This is stopped at line 201 of gradcheck.py.")
+                    import cutil
+                    cutil.keyboard("Gradcheck failed! This is stopped at line 201 of gradcheck.py.")
                     return fail_test('for output no. %d,\n numerical:%s\nanalytical:%s\n' % (j, numerical, analytical))
 
         if not correct_grad_sizes:

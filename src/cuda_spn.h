@@ -71,3 +71,17 @@ int spnc_particleprojection_backward(THCudaTensor* locs_t,
                                    THCudaTensor* depth_mask_t,
                                    THCudaTensor* out_t,
                                    THCudaTensor* dlocs_t);
+
+int spnc_imageprojection_forward(THCudaTensor* locs_t,
+                                   THCudaTensor* image_t,
+                                   const float camera_fl,
+                                   THCudaTensor* depth_mask_t,
+                                   THCudaTensor* out_t);
+
+int spnc_imageprojection_backward(THCudaTensor* locs_t,
+                                   THCudaTensor* image_t,
+                                   const float camera_fl,
+                                   THCudaTensor* depth_mask_t,
+                                   THCudaTensor* out_t,
+                                   THCudaTensor* dlocs_t,
+                                   THCudaTensor* dimage_t);

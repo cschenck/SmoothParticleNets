@@ -479,5 +479,70 @@ int spn_particleprojection_forward(THFloatTensor* locs_t,
 }
 
 
+int spn_imageprojection_backward(THFloatTensor* locs_t,
+                                 THFloatTensor* image_t,
+                                   const float camera_fl,
+                                   THFloatTensor* depth_mask_t,
+                                   THFloatTensor* out_t,
+                                   THFloatTensor* dlocs_t,
+                                   THFloatTensor* dimage_t)
+{
+    float* locs = THFloatTensor_data(locs_t);
+    float* image = THFloatTensor_data(image_t);
+    float* depth_mask = THFloatTensor_data(depth_mask_t);
+    float* out = THFloatTensor_data(out_t);
+    float* dlocs = NULL;
+    if(dlocs_t != NULL)
+        dlocs = THFloatTensor_data(dlocs_t);
+    float* dimage = NULL;
+    if(dimage_t != NULL)
+        dimage = THFloatTensor_data(dimage_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int channels = image_t->size[1];
+    const int width = image_t->size[3];
+    const int height = image_t->size[2];
+    int b, i;
+    for(b = 0; b < batch_size; ++b)
+    {
+        for(i = 0; i < N; ++i)
+        {
+            compute_image_projection(
+                locs,
+                image,
+                batch_size,
+                N,
+                camera_fl,
+                width,
+                height,
+                channels,
+                depth_mask,
+                i,
+                b,
+                out,
+                dlocs,
+                dimage
+            );
+        }
+    }
+
+    return 1;
+}
+
+int spn_imageprojection_forward(THFloatTensor* locs_t,
+                                 THFloatTensor* image_t,
+                                   const float camera_fl,
+                                   THFloatTensor* depth_mask_t,
+                                   THFloatTensor* out_t)
+{
+    return spn_imageprojection_backward(locs_t, 
+                                        image_t,
+                                          camera_fl,
+                                          depth_mask_t,
+                                          out_t,
+                                          NULL,
+                                          NULL);
+}
+
 
  

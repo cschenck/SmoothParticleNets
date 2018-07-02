@@ -971,8 +971,10 @@ particles in 3D. Inputs are:
 	-out: (batch_size X height X width) the output with the projection of particle n in batch
 		  b added to it. If derivatives are being computed (dlocs is not NULL), then this is
 		  assumed to contain the derivative of out wrt the loss.
-	-dlocs: [Optional] (batch_size X N X 3) if not NULL, then this function will 
-	     	compute the derivatives and place the one wrt to locs here.
+	-dlocs: [Optional] (batch_size X N X 3) if not NULL, then this function assumes that out 
+	     	contains the derivative of some value wrt to the output, and so this function
+	     	will compute the derivatives instead of the normal output and place the one wrt 
+	     	to locs here.
 **/
 DEVICE_FUNC
 void compute_particle_projection(
@@ -1046,6 +1048,137 @@ void compute_particle_projection(
 					((xi - proj.x)*-r.x + (yj - proj.y)*-r.y));
 			}
 		}	
+	}
+}
+
+
+/**
+Function that that computes the projection of an image onto a set of particles. For each
+particle, it determines its image coordinates, then uses bilinear inerpolation on the
+image features to compute features for that particle.
+Note that unlike all other functions in this file, this function only works with
+particles in 3D. Inputs are:
+	-locs: (batch_size X N X 3) the cartesian coordinates of all the particles in camera
+		   space.
+	-image: (batch_size X channels X height X width) the image to project onto the
+		    particles.
+	-batch_size: the size of the batch.
+	-N: the number of particles in each batch.
+	-camera_fl: focal length of the camera in pixels.
+	-width: width of the camera image.
+	-height: height of the camera image.
+	-channels: the number of channels in the image.
+	-depth_mask: [Optional] (batch_size X height X width) mask used to block projections of
+			     particles. For any pixel a particle projects onto, if that particle is 
+			     behind the value in the mask, the particle gets no feature values.
+    -b: the batch index of the particle being projected.
+	-n: the index of the particle being projected.
+	-out: (batch_size X N X channels) the output with the projection of particle n in batch
+		  b added to it. If derivatives are being computed (dlocs is not NULL), then this is
+		  assumed to contain the derivative of out wrt the loss.
+	-dlocs: [Optional] (batch_size X N X 3) if not NULL, then this function assumes that out 
+	     	contains the derivative of some value wrt to the output, and so this function
+	     	will compute the derivatives instead of the normal output and place the one wrt 
+	     	to locs here.
+ 	-dimage: [Optional] (batch_size X channels X height X width) similar to dlocs, if not
+ 			 NULL then the derivative of some value wrt to the image is computed and
+ 			 placed here.
+**/
+DEVICE_FUNC
+void compute_image_projection(
+	const float* locs,
+	const float* image,
+	const int batch_size,
+	const int N,
+	const float camera_fl,
+	const int width,
+	const int height,
+	const int channels,
+	const float* depth_mask,
+	const int n,
+	const int b,
+	float* out,
+	float* dlocs,
+	float* dimage
+)
+{
+	int backward = (dlocs != NULL || dimage != NULL);
+	const float* rr = locs + (b*N + n)*3;
+	float4 r; r.x = rr[0]; r.y = rr[1]; r.z = rr[2]; r.w = 0;
+	// Can't contribute if it's behind the camera.
+	if(r.z <= 0) return;
+	float4 proj;
+	proj.x = r.x*camera_fl/r.z + width/2;
+	proj.y = r.y*camera_fl/r.z + height/2;
+	// Make sure the particle is in bounds.
+	if(proj.x <= 0.5 || proj.x >= width - 0.5 || proj.y <= 0.5 || proj.y >= height - 0.5)
+		return;
+	int ii = proj.x;
+	int jj = proj.y;
+	// Check the depth mask.
+	float depth_val = *(depth_mask + b*width*height + jj*width + ii);
+	if(depth_val > 0.0f && depth_val < r.z)
+		return;
+	int c;
+	int lowi, highi, lowj, highj;
+	float vll, vlh, vhl, vhh, v, di, dj;
+	const float* image_ptr;
+	for(c = 0; c < channels; ++c)
+	{
+		// float v = nlinear_interp(image + b*channels*width*height + c*width*height, 
+		// 	dims, 2, 1, rr, dl);
+		// I chose not to use nlinear_interp here even though it does exactly what I
+		// want because computing derivatives wrt the input grid would require an
+		// exponential in the dimensionality sized buffer. Since this function only
+		// works for 3D points, it is okay to do it this way.
+		lowi = proj.x - 0.5;
+		highi = proj.x + 0.5;
+		lowj = proj.y - 0.5;
+		highj = proj.y + 0.5;
+		di = proj.x - 0.5 - lowi;
+		dj = proj.y - 0.5 - lowj;
+		image_ptr = image + b*channels*width*height + c*width*height;
+		vll = image_ptr[lowj*width + lowi];
+		vlh = image_ptr[highj*width + lowi];
+		vhl = image_ptr[lowj*width + highi];
+		vhh = image_ptr[highj*width + highi];
+		v = vll*(1 - di)*(1 - dj) +
+			vlh*(1 - di)*dj +
+			vhl*di*(1 - dj) +
+			vhh*di*dj;
+		
+		
+		if(!backward)
+		{
+			atomicAdd(out + b*N*channels + n*channels + c, v);
+		}
+		else
+		{
+			// dL/dlocs = dL/dout*dout/dproj*dproj/dlocs
+			// dL/dout -> Given in dlocs
+			// dout/dproj -> Derivative of v wrt proj
+			//      Given by nlinear_interp
+			// dproj/locs -> Derivative of proj wrt locs
+			//      = [[camera_fl/r.z, 0], 
+			//		   [0, camera_fl/r.z], 
+			//		   [-r.x*camera_fl/(r.z*r.z), -r.y*camera_fl/(r.z*r.z)]]
+			float dLdout = *(out + b*N*channels + n*channels + c);
+			float doutpx = -vll*(1 - dj) + -vlh*dj + vhl*(1 - dj) + vhh*dj;
+			float doutpy = -vll*(1 - di) + vlh*(1 - di) + -vhl*di + vhh*di;
+			// We can multiply out dL/dout*dout/dproj*dproj/dtran and compute it
+			// all at once to get dL/dtran.
+			atomicAdd(dlocs + (b*N + n)*3 + 0, 
+				dLdout*camera_fl/r.z*doutpx);
+			atomicAdd(dlocs + (b*N + n)*3 + 1, 
+				dLdout*camera_fl/r.z*doutpy);
+			atomicAdd(dlocs + (b*N + n)*3 + 2, 
+				dLdout*-r.x*camera_fl/(r.z*r.z)*doutpx + dLdout*-r.y*camera_fl/(r.z*r.z)*doutpy);
+			// Derivative wrt image.
+			atomicAdd(dimage + b*channels*width*height + c*width*height + lowj*width + lowi, dLdout*(1 - di)*(1 - dj));
+			atomicAdd(dimage + b*channels*width*height + c*width*height + highj*width + lowi, dLdout*(1 - di)*dj);
+			atomicAdd(dimage + b*channels*width*height + c*width*height + lowj*width + highi, dLdout*di*(1 - dj));
+			atomicAdd(dimage + b*channels*width*height + c*width*height + highj*width + highi, dLdout*di*dj);
+		}
 	}
 }
 

@@ -317,6 +317,75 @@ int spnc_particleprojection_backward(THCudaTensor* locs_t,
 }
 
 
+int spnc_imageprojection_forward(THCudaTensor* locs_t,
+                                   THCudaTensor* image_t,
+                                   const float camera_fl,
+                                   THCudaTensor* depth_mask_t,
+                                   THCudaTensor* out_t)
+{
+    float* locs = THCudaTensor_data(state, locs_t);
+    float* image = THCudaTensor_data(state, image_t);
+    float* depth_mask = THCudaTensor_data(state, depth_mask_t);
+    float* out = THCudaTensor_data(state, out_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int width = image_t->size[3];
+    const int height = image_t->size[2];
+    const int channels = image_t->size[1];
+    cudaStream_t stream = THCState_getCurrentStream(state);
+
+    return cuda_imageprojection(locs,
+                                   image,
+                                   camera_fl,
+                                   depth_mask,
+                                   batch_size,
+                                   N,
+                                   width,
+                                   height,
+                                   channels,
+                                   out,
+                                   NULL,
+                                   NULL,
+                                   stream);
+}
+
+int spnc_imageprojection_backward(THCudaTensor* locs_t,
+                                   THCudaTensor* image_t,
+                                   const float camera_fl,
+                                   THCudaTensor* depth_mask_t,
+                                   THCudaTensor* out_t,
+                                   THCudaTensor* dlocs_t,
+                                   THCudaTensor* dimage_t)
+{
+    float* locs = THCudaTensor_data(state, locs_t);
+    float* image = THCudaTensor_data(state, image_t);
+    float* depth_mask = THCudaTensor_data(state, depth_mask_t);
+    float* out = THCudaTensor_data(state, out_t);
+    float* dlocs = THCudaTensor_data(state, dlocs_t);
+    float* dimage = THCudaTensor_data(state, dimage_t);
+    const int batch_size = locs_t->size[0];
+    const int N = locs_t->size[1];
+    const int width = image_t->size[3];
+    const int height = image_t->size[2];
+    const int channels = image_t->size[1];
+    cudaStream_t stream = THCState_getCurrentStream(state);
+
+    return cuda_imageprojection(locs,
+                                   image,
+                                   camera_fl,
+                                   depth_mask,
+                                   batch_size,
+                                   N,
+                                   width,
+                                   height,
+                                   channels,
+                                   out,
+                                   dlocs,
+                                   dimage,
+                                   stream);
+}
+
+
 #else
 
 int spnc_convsp_forward(const void* qlocs_t, const void* locs_t, const void* data_t, 
@@ -440,6 +509,30 @@ int spnc_particleprojection_backward(void* locs_t,
                                    void* depth_mask_t,
                                    void* out_t,
                                    void* dlocs_t)
+{
+    fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
+                     "Please recompile with the --with_cuda flag\n.");
+    return 0;
+}
+
+int spnc_imageprojection_forward(void* locs_t,
+                                   void* image_t,
+                                   const float camera_fl,
+                                   void* depth_mask_t,
+                                   void* out_t)
+{
+    fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
+                     "Please recompile with the --with_cuda flag\n.");
+    return 0;
+}
+
+int spnc_imageprojection_backward(void* locs_t,
+                                   void* image_t,
+                                   const float camera_fl,
+                                   void* depth_mask_t,
+                                   void* out_t,
+                                   void* dlocs_t,
+                                   void* dimage_t)
 {
     fprintf(stderr, "SmoothParticleNets was not compiled with Cuda suport.\n"
                      "Please recompile with the --with_cuda flag\n.");

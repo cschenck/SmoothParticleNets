@@ -73,3 +73,17 @@ int spn_particleprojection_backward(THFloatTensor* locs_t,
                                    THFloatTensor* depth_mask_t,
                                    THFloatTensor* out_t,
                                    THFloatTensor* dlocs_t);
+
+int spn_imageprojection_forward(THFloatTensor* locs_t,
+                                 THFloatTensor* image_t,
+                                   const float camera_fl,
+                                   THFloatTensor* depth_mask_t,
+                                   THFloatTensor* out_t);
+
+int spn_imageprojection_backward(THFloatTensor* locs_t,
+                                 THFloatTensor* image_t,
+                                   const float camera_fl,
+                                   THFloatTensor* depth_mask_t,
+                                   THFloatTensor* out_t,
+                                   THFloatTensor* dlocs_t,
+                                   THFloatTensor* dimage_t);

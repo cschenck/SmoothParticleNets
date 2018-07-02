@@ -73,3 +73,17 @@ int spnc_particleprojection_backward(void* locs_t,
                                    void* depth_mask_t,
                                    void* out_t,
                                    void* dlocs_t);
+
+int spnc_imageprojection_forward(void* locs_t,
+                                   void* image_t,
+                                   const float camera_fl,
+                                   void* depth_mask_t,
+                                   void* out_t);
+
+int spnc_imageprojection_backward(void* locs_t,
+                                   void* image_t,
+                                   const float camera_fl,
+                                   void* depth_mask_t,
+                                   void* out_t,
+                                   void* dlocs_t,
+                                   void* dimage_t);
