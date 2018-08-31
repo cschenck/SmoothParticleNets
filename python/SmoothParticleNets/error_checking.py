@@ -4,6 +4,10 @@ import numpy as np
 
 import torch
 
+def check_nans(v, name):
+    if (v != v).data.any():
+        raise ValueError("Found NaNs in %s" % name)
+
 def throws_exception(exception_type, func, *args, **kwargs):
     try:
         func(*args, **kwargs)

@@ -187,7 +187,6 @@ class _ConvSPFunction(torch.autograd.Function):
             _ext.spn_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius, 
                 self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
                 grad_output, ret_qlocs, ret_locs, ret_data, ret_weight)
-
         # PyTorch requires gradients for each input, but we don't care about the
         # gradients for neighbors, so set that to all 0s.
         return (ret_qlocs,

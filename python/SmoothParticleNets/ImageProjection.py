@@ -98,9 +98,15 @@ class ImageProjection(torch.nn.Module):
         ec.check_tensor_dims(camera_pose, "camera_pose", (batch_size, 3))
         ec.check_tensor_dims(camera_rot, "camera_rot", (batch_size, 4))
 
+        ec.check_nans(locs, "locs")
+        ec.check_nans(image, "image")
+        ec.check_nans(camera_pose, "camera_pose")
+        ec.check_nans(camera_rot, "camera_rot")
+
         if depth_mask is not None:
             ec.check_tensor_dims(depth_mask, "depth_mask", (batch_size, 
                 height, width))
+            ec.check_nans(depth_mask, "depth_mask")
             depth_mask = depth_mask.contiguous()
         else:
             if (self.empty_depth_mask.size()[0] != batch_size or 
@@ -125,8 +131,13 @@ class ImageProjection(torch.nn.Module):
         inv = torch.autograd.Variable(inv, requires_grad=False)
         camera_rot = camera_rot*inv
         rot = self._rotationMatrixFromQuaternion(camera_rot)
+        if (rot != rot).data.any():
+            raise ValueError("No NaNs found in camera_rot argument, but NaNs created when"
+                             " constructing a rotation matrix from it.")
         # Rotate the locs into camera space.
         locs = torch.bmm(locs, rot)
+        if (locs != locs).data.any():
+            raise ValueError("Rotating locs by rotation matrix resulted in NaNs.")
 
         locs = locs.contiguous()
         image = image.contiguous()
