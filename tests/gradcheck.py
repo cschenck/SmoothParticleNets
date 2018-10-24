@@ -68,8 +68,8 @@ def get_numerical_jacobian(fn, input, eps=1e-3, use_double=False):
     # To be able to use .view(-1) input must be contiguous
     input = contiguous(input)
     if use_double:
-        input = [torch.nn.Parameter(x.data.double()) if isinstance(x, torch.nn.Parameter) else x.double() 
-                    for x in input]
+        input = [torch.nn.Parameter(x.data.double()) if isinstance(x, torch.nn.Parameter) else x.double()
+                 for x in input]
     output_size = fn(input).numel()
     jacobian = make_jacobian(input, output_size)
 
@@ -92,12 +92,12 @@ def get_numerical_jacobian(fn, input, eps=1e-3, use_double=False):
         for i in range(flat_tensor.nelement()):
             orig = flat_tensor[i]
             flat_tensor[i] = orig - eps
-            outa.copy_(fn(input), broadcast=False)
+            outa.copy_(fn(input).view(-1))
             flat_tensor[i] = orig + eps
-            outb.copy_(fn(input), broadcast=False)
+            outb.copy_(fn(input).view(-1))
             flat_tensor[i] = orig
 
-            outb.add_(-1, outa).div_(2 * eps)
+            outb.add_(-1, outa).div_(eps)
             d_tensor[i] = outb
 
     return tuple(x.float() for x in jacobian)
@@ -123,10 +123,12 @@ def get_analytical_jacobian(input, output):
                 else:
                     if d_x.size() != x.size():
                         correct_grad_sizes = False
-                    jacobian_x[:, i] = d_x.to_dense() if d_x.is_sparse else d_x
+                    jacobian_x[:, i] = (
+                        d_x.to_dense() if d_x.is_sparse else d_x).view(-1)
 
     for jacobian_x, jacobian_reentrant_x in zip(jacobian, jacobian_reentrant):
-        reentrant = max(reentrant, (jacobian_x - jacobian_reentrant_x).abs().max())
+        reentrant = max(
+            reentrant, (jacobian_x - jacobian_reentrant_x).abs().max())
 
     return jacobian, reentrant, correct_grad_sizes
 
@@ -145,7 +147,7 @@ def _differentiable_outputs(x):
 
 
 def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_exception=True,
-    func_numerical=None, use_double=False):
+              func_numerical=None, use_double=False):
     """Check gradients computed via small finite differences
        against analytical gradients
     The check between numerical and analytical has the same behaviour as
@@ -184,21 +186,21 @@ def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_ex
 
         if func_numerical is None:
             func_numerical = func
+
         def fn(input):
             return _as_tuple(func_numerical(*input))[i].data
 
-        analytical, reentrant, correct_grad_sizes = get_analytical_jacobian(_as_tuple(inputs), o)
+        analytical, reentrant, correct_grad_sizes = get_analytical_jacobian(
+            _as_tuple(inputs), o)
         numerical = get_numerical_jacobian(fn, inputs, eps, use_double)
 
         if reentrant > retol:
-            return fail_test('not reentrant, %g exceeded reentrance tolerance of %g.' 
-                % (reentrant, retol))
+            return fail_test('not reentrant, %g exceeded reentrance tolerance of %g.'
+                             % (reentrant, retol))
 
         for j, (a, n) in enumerate(zip(analytical, numerical)):
             if a.numel() != 0 or n.numel() != 0:
                 if not ((a - n).abs() <= (atol + rtol * n.abs())).all():
-                    import cutil
-                    cutil.keyboard("Gradcheck failed! This is stopped at line 201 of gradcheck.py.")
                     return fail_test('for output no. %d,\n numerical:%s\nanalytical:%s\n' % (j, numerical, analytical))
 
         if not correct_grad_sizes:
@@ -208,7 +210,8 @@ def gradcheck(func, inputs, eps=1e-6, atol=1e-5, rtol=1e-3, retol=1e-4, raise_ex
     zero_gradients(inputs)
     output = _differentiable_outputs(func(*inputs))
     if any([o.requires_grad for o in output]):
-        torch.autograd.backward(output, [o.data.new(o.size()).zero_() for o in output], create_graph=True)
+        torch.autograd.backward(
+            output, [o.data.new(o.size()).zero_() for o in output], create_graph=True)
         var_inputs = list(filter(lambda i: isinstance(i, Variable), inputs))
         if not var_inputs:
             raise RuntimeError("no Variables found in input")
@@ -249,7 +252,8 @@ def gradgradcheck(func, inputs, grad_outputs, eps=1e-6, atol=1e-5, rtol=1e-3):
         input_args = input_args[:-len(grad_outputs)]
         outputs = func(*input_args)
         outputs = _as_tuple(outputs)
-        input_args = tuple(x for x in input_args if isinstance(x, Variable) and x.requires_grad)
+        input_args = tuple(x for x in input_args if isinstance(
+            x, Variable) and x.requires_grad)
         grad_inputs = torch.autograd.grad(outputs, input_args, grad_outputs)
         return grad_inputs
 

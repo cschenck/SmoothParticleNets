@@ -6,8 +6,10 @@ import torch
 import torch.autograd
 
 import _ext
+import _extc
 import error_checking as ec
 from kernels import KERNELS, KERNEL_NAMES
+
 
 class ConvSP(torch.nn.Module):
     """ The Smooth Particle Convolution layer. Performs convolutions on particle sets. Each
@@ -18,8 +20,9 @@ class ConvSP(torch.nn.Module):
     with the particles and kernel cell center r, a weighted average for f is taken at r
     based on the distance to nearby
     """
+
     def __init__(self, in_channels, out_channels, ndim, kernel_size, dilation, radius,
-                    dis_norm=False, kernel_fn='default', with_params=True):
+                 dis_norm=False, kernel_fn='default', with_params=True):
         """ Initialize a Smooth Particle Convolution layer.
 
         Arguments:
@@ -40,38 +43,41 @@ class ConvSP(torch.nn.Module):
                           meaning they won't be optimized when doing backprop.
         """
         super(ConvSP, self).__init__()
-        self.nchannels = ec.check_conditions(in_channels, "in_channels", 
-            "%s > 0", "isinstance(%s, numbers.Integral)")
+        self.nchannels = ec.check_conditions(in_channels, "in_channels",
+                                             "%s > 0", "isinstance(%s, numbers.Integral)")
         self.nkernels = ec.check_conditions(out_channels, "out_channels",
-            "%s > 0", "isinstance(%s, numbers.Integral)")
-        self.ndim = ec.check_conditions(ndim, "ndim", 
-            "%s > 0", "%s < " + str(_ext.spn_max_cartesian_dim()), 
-            "isinstance(%s, numbers.Integral)")
+                                            "%s > 0", "isinstance(%s, numbers.Integral)")
+        self.ndim = ec.check_conditions(ndim, "ndim",
+                                        "%s > 0", "%s < " +
+                                        str(_ext.spn_max_cartesian_dim()),
+                                        "isinstance(%s, numbers.Integral)")
 
-        self._kernel_size = ec.make_list(kernel_size, ndim, "kernel_size", 
-            "%s >= 0", "%s %% 2 == 1 # Must be odd", 
-            "isinstance(%s, numbers.Integral)")
-        self._dilation = ec.make_list(dilation, ndim, "dilation", 
-            "%s >= 0", "isinstance(%s, numbers.Real)")
+        self._kernel_size = ec.make_list(kernel_size, ndim, "kernel_size",
+                                         "%s >= 0", "%s %% 2 == 1 # Must be odd",
+                                         "isinstance(%s, numbers.Integral)")
+        self._dilation = ec.make_list(dilation, ndim, "dilation",
+                                      "%s >= 0", "isinstance(%s, numbers.Real)")
 
-        self.radius = ec.check_conditions(radius, "radius", 
-            "%s >= 0", "isinstance(%s, numbers.Real)")
+        self.radius = ec.check_conditions(radius, "radius",
+                                          "%s >= 0", "isinstance(%s, numbers.Real)")
 
         self.kernel_fn = ec.check_conditions(kernel_fn, "kernel_fn",
-            "%s in " + str(KERNEL_NAMES))
+                                             "%s in " + str(KERNEL_NAMES))
         self.kernel_fn = KERNEL_NAMES.index(self.kernel_fn)
         self.dis_norm = (1 if dis_norm else 0)
 
         self.ncells = np.prod(self._kernel_size)
 
         if with_params:
-            self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(self.nkernels, 
-                self.nchannels, self.ncells)))
-            self.register_parameter("bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
+            self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(self.nkernels,
+                                                                              self.nchannels, self.ncells)))
+            self.register_parameter(
+                "bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
         else:
-            self.register_buffer("weight", torch.autograd.Variable(torch.Tensor(self.nkernels, 
-                self.nchannels, self.ncells)))
-            self.register_buffer("bias", torch.autograd.Variable(torch.Tensor(self.nkernels)))
+            self.register_buffer("weight", torch.autograd.Variable(torch.Tensor(self.nkernels,
+                                                                                self.nchannels, self.ncells)))
+            self.register_buffer("bias", torch.autograd.Variable(
+                torch.Tensor(self.nkernels)))
 
         self.register_buffer("kernel_size", ec.list2tensor(self._kernel_size))
         self.register_buffer("dilation", ec.list2tensor(self._dilation))
@@ -113,17 +119,17 @@ class ConvSP(torch.nn.Module):
         if locs.is_cuda:
             if self.device_id != torch.cuda.current_device():
                 self.device_id = torch.cuda.current_device()
-                self.nshared_device_mem = _ext.spnc_get_shared_mem_size(self.device_id)
+                self.nshared_device_mem = _extc.spnc_get_shared_mem_size(
+                    self.device_id)
 
         # Do the compution.
         convsp = _ConvSPFunction(self.radius, self.kernel_size, self.dilation,
-            self.dis_norm, self.kernel_fn, self.ncells, self.nshared_device_mem)
+                                 self.dis_norm, self.kernel_fn, self.ncells, self.nshared_device_mem)
         # data.shape = BxCxN
-        data = convsp(qlocs if qlocs is not None else locs, 
-            locs, data, neighbors, self.weight, self.bias)
+        data = convsp(qlocs if qlocs is not None else locs,
+                      locs, data, neighbors, self.weight, self.bias)
         # data.shape = BxOxN
         return data
-
 
 
 """
@@ -132,10 +138,11 @@ INTERNAL FUNCTIONS
 
 """
 
+
 class _ConvSPFunction(torch.autograd.Function):
 
-    def __init__(self, radius, kernel_size, dilation, dis_norm, kernel_fn, 
-            ncells, nshared_device_mem=-1):
+    def __init__(self, radius, kernel_size, dilation, dis_norm, kernel_fn,
+                 ncells, nshared_device_mem=-1):
         super(_ConvSPFunction, self).__init__()
         self.radius = radius
         self.kernel_size = kernel_size
@@ -153,19 +160,18 @@ class _ConvSPFunction(torch.autograd.Function):
         ret = data.new(batch_size, M, nkernels)
         ret.fill_(0)
         if locs.is_cuda:
-            if not _ext.spnc_convsp_forward(qlocs, locs, data, neighbors, weight, bias, self.radius, 
-                        self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret, 
-                        self.nshared_device_mem):
+            if not _extc.spnc_convsp_forward(qlocs, locs, data, neighbors, weight, bias, self.radius,
+                                             self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret,
+                                             self.nshared_device_mem):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_forward(qlocs, locs, data, neighbors, weight, bias, self.radius, 
-                self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret)
+            _ext.spn_convsp_forward(qlocs, locs, data, neighbors, weight, bias, self.radius,
+                                    self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret)
 
         # Add the bias.
         ret += bias.view(1, 1, nkernels)
 
-        return ret 
-
+        return ret
 
     def backward(self, grad_output):
         qlocs, locs, data, neighbors, weight, bias = self.saved_tensors
@@ -178,24 +184,20 @@ class _ConvSPFunction(torch.autograd.Function):
         ret_weight = grad_output.new(weight.size())
         ret_weight.fill_(0)
         if grad_output.is_cuda:
-            if not _ext.spnc_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius, 
-                        self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
-                        grad_output, ret_qlocs, ret_locs, ret_data, ret_weight, 
-                        self.nshared_device_mem):
+            if not _extc.spnc_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius,
+                                              self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn,
+                                              grad_output, ret_qlocs, ret_locs, ret_data, ret_weight,
+                                              self.nshared_device_mem):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius, 
-                self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, 
-                grad_output, ret_qlocs, ret_locs, ret_data, ret_weight)
+            _ext.spn_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius,
+                                     self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn,
+                                     grad_output, ret_qlocs, ret_locs, ret_data, ret_weight)
         # PyTorch requires gradients for each input, but we don't care about the
         # gradients for neighbors, so set that to all 0s.
         return (ret_qlocs,
-                ret_locs, 
-                ret_data, 
+                ret_locs,
+                ret_data,
                 grad_output.new(neighbors.size()).fill_(0),
                 ret_weight,
                 grad_output.sum(1).sum(0))
-
-
-
-

@@ -6,14 +6,16 @@ import torch
 import torch.autograd
 
 import _ext
+import _extc
 import error_checking as ec
 
 
 class ConvSDF(torch.nn.Module):
     """ TODO
     """
-    def __init__(self, sdfs, sdf_sizes, out_channels, ndim, kernel_size, dilation, 
-                    max_distance, with_params=True, compute_pose_grads=False):
+
+    def __init__(self, sdfs, sdf_sizes, out_channels, ndim, kernel_size, dilation,
+                 max_distance, with_params=True, compute_pose_grads=False):
         """ Initialize a SDF Convolution layer.
 
         Arguments:
@@ -37,19 +39,20 @@ class ConvSDF(torch.nn.Module):
         """
         super(ConvSDF, self).__init__()
         self.nkernels = ec.check_conditions(out_channels, "out_channels",
-            "%s > 0", "isinstance(%s, numbers.Integral)")
-        self.ndim = ec.check_conditions(ndim, "ndim", 
-            "%s > 0", "%s < " + str(_ext.spn_max_cartesian_dim()), 
-            "%s in [1, 2, 3] # Only 1-, 2-, and 3-D are suported",
-            "isinstance(%s, numbers.Integral)")
+                                            "%s > 0", "isinstance(%s, numbers.Integral)")
+        self.ndim = ec.check_conditions(ndim, "ndim",
+                                        "%s > 0", "%s < " +
+                                        str(_ext.spn_max_cartesian_dim()),
+                                        "%s in [1, 2, 3] # Only 1-, 2-, and 3-D are suported",
+                                        "isinstance(%s, numbers.Integral)")
         self.max_distance = ec.check_conditions(max_distance, "max_distance",
-            "%s >= 0", "isinstance(%s, numbers.Real)")
+                                                "%s >= 0", "isinstance(%s, numbers.Real)")
 
-        self._kernel_size = ec.make_list(kernel_size, ndim, "kernel_size", 
-            "%s >= 0", "%s %% 2 == 1 # Must be odd", 
-            "isinstance(%s, numbers.Integral)")
-        self._dilation = ec.make_list(dilation, ndim, "dilation", 
-            "%s >= 0", "isinstance(%s, numbers.Real)")
+        self._kernel_size = ec.make_list(kernel_size, ndim, "kernel_size",
+                                         "%s >= 0", "%s %% 2 == 1 # Must be odd",
+                                         "isinstance(%s, numbers.Integral)")
+        self._dilation = ec.make_list(dilation, ndim, "dilation",
+                                      "%s >= 0", "isinstance(%s, numbers.Real)")
 
         self.register_buffer("sdfs", torch.zeros(1))
         self.register_buffer("sdf_shapes", torch.zeros(1))
@@ -60,7 +63,8 @@ class ConvSDF(torch.nn.Module):
         if with_params:
             self.register_parameter("weight", torch.nn.Parameter(torch.Tensor(
                 self.nkernels, self.ncells)))
-            self.register_parameter("bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
+            self.register_parameter(
+                "bias", torch.nn.Parameter(torch.Tensor(self.nkernels)))
         else:
             self.register_buffer("weight", torch.autograd.Variable(
                 torch.Tensor(self.nkernels, self.ncells)))
@@ -76,15 +80,15 @@ class ConvSDF(torch.nn.Module):
         self.register_buffer("dilation", self._dilation)
 
     def SetSDFs(self, sdfs, sdf_sizes):
-        cell_sizes = [ec.check_conditions(x, "sdf_sizes[%d]"%i, "%s > 0",
-            "isinstance(%s, numbers.Real)") for i, x in enumerate(sdf_sizes)]
-        _sdfs = [ec.check_conditions(sdf, "sdfs[%d]"%i, "isinstance(%s, torch.Tensor)",
-            "len(%s.size()) == " + str(self.ndim)) for i, sdf in enumerate(sdfs)]
-        _sdf_shapes = ec.list2tensor([list(x.size()) + [cell_sizes[i],] 
-            for i, x in enumerate(_sdfs)])
+        cell_sizes = [ec.check_conditions(x, "sdf_sizes[%d]" % i, "%s > 0",
+                                          "isinstance(%s, numbers.Real)") for i, x in enumerate(sdf_sizes)]
+        _sdfs = [ec.check_conditions(sdf, "sdfs[%d]" % i, "isinstance(%s, torch.Tensor)",
+                                     "len(%s.size()) == " + str(self.ndim)) for i, sdf in enumerate(sdfs)]
+        _sdf_shapes = ec.list2tensor([list(x.size()) + [cell_sizes[i], ]
+                                      for i, x in enumerate(_sdfs)])
         _sdfs = [x.contiguous().view(-1) for x in _sdfs]
-        _sdf_offsets = ec.list2tensor([0,] + 
-            np.cumsum([x.size()[0] for x in _sdfs])[:-1].tolist())
+        _sdf_offsets = ec.list2tensor([0, ] +
+                                      np.cumsum([x.size()[0] for x in _sdfs])[:-1].tolist())
         _sdfs = torch.cat(_sdfs)
         self.sdfs.resize_(_sdfs.size())
         self.sdfs[...] = _sdfs
@@ -123,7 +127,7 @@ class ConvSDF(torch.nn.Module):
         batch_size = locs.size()[0]
         N = locs.size()[1]
         M = idxs.size()[1]
-        R = {1 : 0, 2 : 1, 3 : 4}[self.ndim]
+        R = {1: 0, 2: 1, 3: 4}[self.ndim]
         ec.check_tensor_dims(locs, "locs", (batch_size, N, self.ndim))
         ec.check_tensor_dims(idxs, "idxs", (batch_size, M,))
         ec.check_tensor_dims(poses, "poses", (batch_size, M, self.ndim + R))
@@ -136,9 +140,8 @@ class ConvSDF(torch.nn.Module):
 
         # Do the compution.
         convsdf = _ConvSDFFunction(self.sdfs, self.sdf_offsets, self.sdf_shapes,
-            self.kernel_size, self.dilation, self.max_distance, self.compute_pose_grads)
+                                   self.kernel_size, self.dilation, self.max_distance, self.compute_pose_grads)
         return convsdf(locs, idxs, poses, scales, self.weight, self.bias)
-
 
 
 """
@@ -146,6 +149,7 @@ class ConvSDF(torch.nn.Module):
 INTERNAL FUNCTIONS
 
 """
+
 
 class _ConvSDFFunction(torch.autograd.Function):
 
@@ -167,17 +171,16 @@ class _ConvSDFFunction(torch.autograd.Function):
         ret = self.sdfs.new(batch_size, N, nkernels)
         ret.fill_(0)
         if locs.is_cuda:
-            if not _ext.spnc_convsdf_forward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
-                self.sdf_shapes, weight, bias, self.kernel_size, self.dilation, 
-                self.max_distance, ret):
+            if not _extc.spnc_convsdf_forward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
+                                              self.sdf_shapes, weight, bias, self.kernel_size, self.dilation,
+                                              self.max_distance, ret):
                 raise Exception("Cuda error")
         else:
             _ext.spn_convsdf_forward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
-                self.sdf_shapes, weight, bias, self.kernel_size, self.dilation, 
-                self.max_distance, ret)
+                                     self.sdf_shapes, weight, bias, self.kernel_size, self.dilation,
+                                     self.max_distance, ret)
 
-        return ret 
-
+        return ret
 
     def backward(self, grad_output):
         grad_output = grad_output.contiguous()
@@ -192,14 +195,14 @@ class _ConvSDFFunction(torch.autograd.Function):
             ret_poses = grad_output.new(poses.size()[0] + 1)
         ret_poses.fill_(0)
         if grad_output.is_cuda:
-            if not _ext.spnc_convsdf_backward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
-                self.sdf_shapes, weight, bias, self.kernel_size, self.dilation, 
-                self.max_distance, grad_output, ret_locs, ret_weight, ret_poses):
+            if not _extc.spnc_convsdf_backward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
+                                               self.sdf_shapes, weight, bias, self.kernel_size, self.dilation,
+                                               self.max_distance, grad_output, ret_locs, ret_weight, ret_poses):
                 raise Exception("Cuda error")
         else:
             _ext.spn_convsdf_backward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
-                self.sdf_shapes, weight, bias, self.kernel_size, self.dilation, 
-                self.max_distance, grad_output, ret_locs, ret_weight, ret_poses)
+                                      self.sdf_shapes, weight, bias, self.kernel_size, self.dilation,
+                                      self.max_distance, grad_output, ret_locs, ret_weight, ret_poses)
 
         if not self.compute_pose_grads:
             ret_poses = grad_output.new(poses.size())
@@ -217,17 +220,14 @@ class _ConvSDFFunction(torch.autograd.Function):
                     nn = self.forward(locs, idxs, poses, scales, weight, bias)
                     poses[:, m, i] -= 1e-3
                     gg = (nn - baseline)/1e-3
-                    ret_poses[:, m, i] = torch.sum(torch.sum(gg*grad_output, 1), 1)
-
+                    ret_poses[:, m, i] = torch.sum(
+                        torch.sum(gg*grad_output, 1), 1)
 
         # PyTorch requires gradients for each input, but we only care about the
         # gradients for weight and bias, so set the rest to 0.
-        return (ret_locs, 
+        return (ret_locs,
                 grad_output.new(idxs.size()).fill_(0),
-                ret_poses, 
-                grad_output.new(scales.size()).fill_(0), 
+                ret_poses,
+                grad_output.new(scales.size()).fill_(0),
                 ret_weight,
                 grad_output.sum(1).sum(0))
-
-
-

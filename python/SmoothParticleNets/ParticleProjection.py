@@ -6,10 +6,12 @@ import torch
 import torch.autograd
 
 import _ext
+import _extc
 import error_checking as ec
 from kernels import KERNELS, KERNEL_NAMES
 
 MAX_FLOAT = float(np.finfo(np.float32).max)
+
 
 class ParticleProjection(torch.nn.Module):
     """ The particle projection layer. Projects the given set of particles onto
@@ -19,6 +21,7 @@ class ParticleProjection(torch.nn.Module):
     a final image. Note that unlike the other layers in this package, this layer
     only works with 3D particles.
     """
+
     def __init__(self, camera_fl, camera_size, filter_std, filter_scale):
         """ Initialize a ParticleProjection layer.
 
@@ -34,18 +37,18 @@ class ParticleProjection(torch.nn.Module):
         """
         super(ParticleProjection, self).__init__()
 
-        self.camera_size = ec.make_list(camera_size, 2, "camera_size", 
-            "%s > 0", "isinstance(%s, numbers.Integral)")
+        self.camera_size = ec.make_list(camera_size, 2, "camera_size",
+                                        "%s > 0", "isinstance(%s, numbers.Integral)")
 
-        self.camera_fl = ec.check_conditions(camera_fl, "camera_fl", 
-            "%s > 0", "isinstance(%s, numbers.Real)")
-        self.filter_std = ec.check_conditions(filter_std, "filter_std", 
-            "%s > 0", "isinstance(%s, numbers.Real)")
-        self.filter_scale = ec.check_conditions(filter_scale, "filter_scale", 
-            "%s > 0", "isinstance(%s, numbers.Real)")
+        self.camera_fl = ec.check_conditions(camera_fl, "camera_fl",
+                                             "%s > 0", "isinstance(%s, numbers.Real)")
+        self.filter_std = ec.check_conditions(filter_std, "filter_std",
+                                              "%s > 0", "isinstance(%s, numbers.Real)")
+        self.filter_scale = ec.check_conditions(filter_scale, "filter_scale",
+                                                "%s > 0", "isinstance(%s, numbers.Real)")
 
-        self.register_buffer("empty_depth_mask", 
-            torch.ones(1, self.camera_size[1], self.camera_size[0])*MAX_FLOAT)
+        self.register_buffer("empty_depth_mask",
+                             torch.ones(1, self.camera_size[1], self.camera_size[0])*MAX_FLOAT)
 
     def _rotationMatrixFromQuaternion(self, quat):
         """
@@ -110,21 +113,24 @@ class ParticleProjection(torch.nn.Module):
         ec.check_tensor_dims(camera_rot, "camera_rot", (batch_size, 4))
 
         if depth_mask is not None:
-            ec.check_tensor_dims(depth_mask, "depth_mask", (batch_size, 
-                self.camera_size[1], self.camera_size[0]))
+            ec.check_tensor_dims(depth_mask, "depth_mask", (batch_size,
+                                                            self.camera_size[1], self.camera_size[0]))
             depth_mask = depth_mask.contiguous()
         else:
             if self.empty_depth_mask.size()[0] != batch_size:
-                self.empty_depth_mask.resize_(batch_size, self.camera_size[1], self.camera_size[0])
+                self.empty_depth_mask.resize_(
+                    batch_size, self.camera_size[1], self.camera_size[0])
                 self.empty_depth_mask.fill_(MAX_FLOAT)
-            depth_mask = torch.autograd.Variable(self.empty_depth_mask, requires_grad=False)
+            depth_mask = torch.autograd.Variable(
+                self.empty_depth_mask, requires_grad=False)
             if locs.is_cuda:
                 depth_mask = depth_mask.cuda()
 
         # Let's transform the particles to camera space here.
         locs = locs - camera_pose.unsqueeze(1)
         # Ensure the rotation quaternion is normalized.
-        camera_rot = camera_rot/torch.sqrt(torch.sum(camera_rot**2, 1, keepdim=True))
+        camera_rot = camera_rot / \
+            torch.sqrt(torch.sum(camera_rot**2, 1, keepdim=True))
         # Invert the rotation.
         inv = camera_rot.data.new(1, 4)
         inv[0, 0] = -1
@@ -135,15 +141,18 @@ class ParticleProjection(torch.nn.Module):
         camera_rot = camera_rot*inv
         rot = self._rotationMatrixFromQuaternion(camera_rot)
         # Rotate the locs into camera space.
-        locs = torch.bmm(locs, rot)
+        try:
+            # There's a bug that causes this to fail on the first call when using cuda.
+            # To fix that, just call it again.
+            locs = torch.bmm(locs, rot)
+        except RuntimeError:
+            locs = torch.bmm(locs, rot)
 
         locs = locs.contiguous()
         proj = _ParticleProjectionFunction(self.camera_fl, self.camera_size, self.filter_std,
-            self.filter_scale)
+                                           self.filter_scale)
         ret = proj(locs, depth_mask)
         return ret
-        
-
 
 
 """
@@ -151,6 +160,7 @@ class ParticleProjection(torch.nn.Module):
 INTERNAL FUNCTIONS
 
 """
+
 
 class _ParticleProjectionFunction(torch.autograd.Function):
 
@@ -167,15 +177,14 @@ class _ParticleProjectionFunction(torch.autograd.Function):
         ret = locs.new(batch_size, self.camera_size[1], self.camera_size[0])
         ret.fill_(0)
         if locs.is_cuda:
-            if not _ext.spnc_particleprojection_forward(locs, self.camera_fl,
-                self.filter_std, self.filter_scale, depth_mask, ret):
+            if not _extc.spnc_particleprojection_forward(locs, self.camera_fl,
+                                                         self.filter_std, self.filter_scale, depth_mask, ret):
                 raise Exception("Cuda error")
         else:
             _ext.spn_particleprojection_forward(locs, self.camera_fl,
-                self.filter_std, self.filter_scale, depth_mask, ret)
+                                                self.filter_std, self.filter_scale, depth_mask, ret)
 
-        return ret 
-
+        return ret
 
     def backward(self, grad_output):
         locs, depth_mask = self.saved_tensors
@@ -184,16 +193,12 @@ class _ParticleProjectionFunction(torch.autograd.Function):
         ret_depth_mask = grad_output.new(depth_mask.size())
         ret_depth_mask.fill_(0)
         if grad_output.is_cuda:
-            if not _ext.spnc_particleprojection_backward(locs,  
-                self.camera_fl, self.filter_std, self.filter_scale, depth_mask, grad_output, ret_locs):
+            if not _extc.spnc_particleprojection_backward(locs,
+                                                          self.camera_fl, self.filter_std, self.filter_scale, depth_mask, grad_output, ret_locs):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_particleprojection_backward(locs, 
-                self.camera_fl, self.filter_std, self.filter_scale, depth_mask, grad_output, ret_locs)
+            _ext.spn_particleprojection_backward(locs,
+                                                 self.camera_fl, self.filter_std, self.filter_scale, depth_mask, grad_output, ret_locs)
 
         return (ret_locs,
                 ret_depth_mask,)
-
-
-
-

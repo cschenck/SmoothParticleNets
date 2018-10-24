@@ -6,14 +6,17 @@ import torch
 import torch.autograd
 
 import _ext
+import _extc
 import error_checking as ec
 from kernels import KERNELS, KERNEL_NAMES
 
 MAX_FLOAT = float(np.finfo(np.float32).max)
 
+
 class ImageProjection(torch.nn.Module):
     """ 
     """
+
     def __init__(self, camera_fl):
         """ Initialize a ParticleProjection layer.
         TODO
@@ -25,11 +28,11 @@ class ImageProjection(torch.nn.Module):
         """
         super(ImageProjection, self).__init__()
 
-        self.camera_fl = ec.check_conditions(camera_fl, "camera_fl", 
-            "%s > 0", "isinstance(%s, numbers.Real)")
+        self.camera_fl = ec.check_conditions(camera_fl, "camera_fl",
+                                             "%s > 0", "isinstance(%s, numbers.Real)")
 
-        self.register_buffer("empty_depth_mask", 
-            torch.ones(1, 1, 1)*MAX_FLOAT)
+        self.register_buffer("empty_depth_mask",
+                             torch.ones(1, 1, 1)*MAX_FLOAT)
 
     def _rotationMatrixFromQuaternion(self, quat):
         """
@@ -94,7 +97,8 @@ class ImageProjection(torch.nn.Module):
         height = image.size()[2]
         channels = image.size()[1]
         ec.check_tensor_dims(locs, "locs", (batch_size, N, 3))
-        ec.check_tensor_dims(image, "image", (batch_size, channels, height, width))
+        ec.check_tensor_dims(
+            image, "image", (batch_size, channels, height, width))
         ec.check_tensor_dims(camera_pose, "camera_pose", (batch_size, 3))
         ec.check_tensor_dims(camera_rot, "camera_rot", (batch_size, 4))
 
@@ -104,24 +108,26 @@ class ImageProjection(torch.nn.Module):
         ec.check_nans(camera_rot, "camera_rot")
 
         if depth_mask is not None:
-            ec.check_tensor_dims(depth_mask, "depth_mask", (batch_size, 
-                height, width))
+            ec.check_tensor_dims(depth_mask, "depth_mask", (batch_size,
+                                                            height, width))
             ec.check_nans(depth_mask, "depth_mask")
             depth_mask = depth_mask.contiguous()
         else:
-            if (self.empty_depth_mask.size()[0] != batch_size or 
+            if (self.empty_depth_mask.size()[0] != batch_size or
                 self.empty_depth_mask.size()[1] != height or
-                self.empty_depth_mask.size()[2] != width):
+                    self.empty_depth_mask.size()[2] != width):
                 self.empty_depth_mask.resize_(batch_size, height, width)
                 self.empty_depth_mask.fill_(MAX_FLOAT)
-            depth_mask = torch.autograd.Variable(self.empty_depth_mask, requires_grad=False)
+            depth_mask = torch.autograd.Variable(
+                self.empty_depth_mask, requires_grad=False)
             if locs.is_cuda:
                 depth_mask = depth_mask.cuda()
 
         # Let's transform the particles to camera space here.
         locs = locs - camera_pose.unsqueeze(1)
         # Ensure the rotation quaternion is normalized.
-        camera_rot = camera_rot/torch.sqrt(torch.sum(camera_rot**2, 1, keepdim=True))
+        camera_rot = camera_rot / \
+            torch.sqrt(torch.sum(camera_rot**2, 1, keepdim=True))
         # Invert the rotation.
         inv = camera_rot.data.new(1, 4)
         inv[0, 0] = -1
@@ -135,17 +141,21 @@ class ImageProjection(torch.nn.Module):
             raise ValueError("No NaNs found in camera_rot argument, but NaNs created when"
                              " constructing a rotation matrix from it.")
         # Rotate the locs into camera space.
-        locs = torch.bmm(locs, rot)
+        try:
+            # There's a bug that causes this to fail on the first call when using cuda.
+            # To fix that, just call it again.
+            locs = torch.bmm(locs, rot)
+        except RuntimeError:
+            locs = torch.bmm(locs, rot)
         if (locs != locs).data.any():
-            raise ValueError("Rotating locs by rotation matrix resulted in NaNs.")
+            raise ValueError(
+                "Rotating locs by rotation matrix resulted in NaNs.")
 
         locs = locs.contiguous()
         image = image.contiguous()
         proj = _ImageProjectionFunction(self.camera_fl)
         ret = proj(locs, image, depth_mask)
         return ret
-        
-
 
 
 """
@@ -153,6 +163,7 @@ class ImageProjection(torch.nn.Module):
 INTERNAL FUNCTIONS
 
 """
+
 
 class _ImageProjectionFunction(torch.autograd.Function):
 
@@ -168,15 +179,14 @@ class _ImageProjectionFunction(torch.autograd.Function):
         ret = locs.new(batch_size, N, channels)
         ret.fill_(0)
         if locs.is_cuda:
-            if not _ext.spnc_imageprojection_forward(locs, image,
-                self.camera_fl, depth_mask, ret):
+            if not _extc.spnc_imageprojection_forward(locs, image,
+                                                      self.camera_fl, depth_mask, ret):
                 raise Exception("Cuda error")
         else:
             _ext.spn_imageprojection_forward(locs, image,
-                self.camera_fl, depth_mask, ret)
+                                             self.camera_fl, depth_mask, ret)
 
-        return ret 
-
+        return ret
 
     def backward(self, grad_output):
         locs, image, depth_mask = self.saved_tensors
@@ -187,17 +197,13 @@ class _ImageProjectionFunction(torch.autograd.Function):
         ret_depth_mask = grad_output.new(depth_mask.size())
         ret_depth_mask.fill_(0)
         if grad_output.is_cuda:
-            if not _ext.spnc_imageprojection_backward(locs, image,
-                self.camera_fl, depth_mask, grad_output, ret_locs, ret_image):
+            if not _extc.spnc_imageprojection_backward(locs, image,
+                                                       self.camera_fl, depth_mask, grad_output, ret_locs, ret_image):
                 raise Exception("Cuda error")
         else:
             _ext.spn_imageprojection_backward(locs, image,
-                self.camera_fl, depth_mask, grad_output, ret_locs, ret_image)
+                                              self.camera_fl, depth_mask, grad_output, ret_locs, ret_image)
 
         return (ret_locs,
                 ret_image,
                 ret_depth_mask,)
-
-
-
-
