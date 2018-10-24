@@ -3,4 +3,4 @@ Custom deep learning layer for generalizing convolutions to unordered sets of pa
 
 # WORK IN PROGRESS
 
-[test readme](https://cschenck.github.io/SmoothParticleNets/docs/test.md)
+[test readme](https://cschenck.github.io/SmoothParticleNets/docs/)
