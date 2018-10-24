@@ -1,0 +1,122 @@
+/*This style sheet is a modification of Alden Walker's stylesheet (http://math.uchicago.edu/~akwalker/).*/
+
+
+body {
+font:100% Helvetica,sans-serif;
+background-color:#ffffff;
+}
+
+a {
+text-decoration:none;
+color:#166e5b;
+}
+
+#container {
+margin: 0 auto;
+background-color:#ffffff;
+width:740px;
+}
+
+
+#floatright {
+float:right;
+text-align:right;
+}
+
+
+/*content*/
+
+#content {
+float:right;
+color:#000000;/*color:#102038;*/
+background-color:inherit;
+padding-left:10px;
+width:620px;
+font-size:80%;
+}
+
+#compressedcontent {
+width:500px;
+}
+
+#content h4 {
+margin-top:2px;
+margin-bottom:2px;
+}
+
+#content h3 {
+margin-top: 16px;
+margin-bottom: 2px;
+}
+
+#pic {
+position:center;
+height:284px;
+width:370px;
+}
+
+
+/*header*/
+
+#header {
+background-color:inherit;
+padding:5px;
+padding-left:120px;
+padding-bottom:15px;
+padding-top:50px;
+margin-bottom:0;/*-1em;*/
+}
+
+#header h2 {
+margin-bottom:-5px;
+margin-top:-5px;
+}
+
+#header h4 {
+margin-top:0px;
+margin-bottom:0px;
+}
+
+#header p {
+margin:0;
+font-size:75%;
+}
+
+
+/* footer */
+
+#footer {
+height:100px;
+padding-top:20px;
+background-color:inherit;
+clear:both;
+}
+
+#footer p {
+margin:0;
+font-size:75%;
+}
+
+/* navbar */
+
+#navbar {
+float:left;
+background-color:inherit;
+font-color:#000000;
+width:105px;
+border-right:2px solid #000000;
+}
+
+#navbar ul {
+text-align:right;
+margin-left:-30px;
+margin-right:10px;
+}
+
+#navbar li {
+list-style:none;
+}
+
+
+
+
