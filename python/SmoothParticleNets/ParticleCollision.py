@@ -43,7 +43,7 @@ class ReorderData(torch.nn.Module):
             no_data = False
         else:
             data = torch.autograd.Variable(
-                locs.data.new(0, 0, 0), requires_grad=False)
+                locs.data.new(), requires_grad=False)
             no_data = True
 
         locs = locs.contiguous()

@@ -512,8 +512,11 @@ void kernel_reorder_data(
         }
         for(d = 0; d < ndims; ++d)
             nlocs[b*N*ndims + nn*ndims + d] = locs[b*N*ndims + on*ndims + d];
-        for(d = 0; d < nchannels; ++d)
-            ndata[b*N*nchannels + nn*nchannels + d] = data[b*N*nchannels + on*nchannels + d];
+        if(data != NULL)
+        {
+            for(d = 0; d < nchannels; ++d)
+                ndata[b*N*nchannels + nn*nchannels + d] = data[b*N*nchannels + on*nchannels + d];
+        }
     }
 }
 int cuda_reorder_data(

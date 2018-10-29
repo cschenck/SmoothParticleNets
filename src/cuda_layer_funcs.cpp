@@ -218,16 +218,20 @@ int spnc_reorder_data(at::Tensor locs_t,
                          const int reverse)
 {
     float* locs = (float*)locs_t.data_ptr();
-    float* data = (float*)data_t.data_ptr();
+    float* data = NULL;
     float* idxs = (float*)idxs_t.data_ptr();
     float* nlocs = (float*)nlocs_t.data_ptr();
-    float* ndata = (float*)ndata_t.data_ptr();
+    float* ndata = NULL;
     const int batch_size = locs_t.sizes()[0];
     const int N = locs_t.sizes()[1];
     const int ndims = locs_t.sizes()[2];
     int nchannels = 0;
     if(data_t.defined())
+    {
         nchannels = data_t.sizes()[2];
+        data = (float*)data_t.data_ptr();
+        ndata = (float*)ndata_t.data_ptr();
+    }
     cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
 
     return cuda_reorder_data(

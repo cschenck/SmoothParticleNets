@@ -383,16 +383,20 @@ int spn_reorder_data(at::Tensor locs_t,
                          const int reverse)
 {
     float* locs = (float*)locs_t.data_ptr();
-    float* data = (float*)data_t.data_ptr();
+    float* data = NULL;
     float* idxs = (float*)idxs_t.data_ptr();
     float* nlocs = (float*)nlocs_t.data_ptr();
-    float* ndata = (float*)ndata_t.data_ptr();
+    float* ndata = NULL;
     const int batch_size = locs_t.sizes()[0];
     const int N = locs_t.sizes()[1];
     const int ndims = locs_t.sizes()[2];
     int nchannels = 0;
     if(data_t.defined() > 0)
+    {
         nchannels = data_t.sizes()[2];
+        data = (float*)data_t.data_ptr();
+        ndata = (float*)ndata_t.data_ptr();
+    }
 
     int b, i, d;
     for(b = 0; b < batch_size; ++b)
@@ -408,9 +412,12 @@ int spn_reorder_data(at::Tensor locs_t,
             }
             for(d = 0; d < ndims; ++d)
                 nlocs[b*N*ndims + nn*ndims + d] = locs[b*N*ndims + on*ndims + d];
-            for(d = 0; d < nchannels; ++d)
-                ndata[b*N*nchannels + nn*nchannels + d] = 
-                                data[b*N*nchannels + on*nchannels + d];
+            if(data != NULL)
+            {
+                for(d = 0; d < nchannels; ++d)
+                    ndata[b*N*nchannels + nn*nchannels + d] = 
+                                    data[b*N*nchannels + on*nchannels + d];
+            }
         }
     }
 
