@@ -33,7 +33,7 @@ float atomicMax(float *addr, float value)
     	if(old >= value) 
     		return old;
         assumed = old;
-        old = atomicCAS((unsigned int*)addr, __float_as_int(assumed), __float_as_int(value));
+        old = __uint_as_float(atomicCAS((unsigned int*)addr, __float_as_uint(assumed), __float_as_uint(value)));
     }while(old != assumed);
     return old;
 }
