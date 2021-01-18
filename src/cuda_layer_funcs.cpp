@@ -37,7 +37,7 @@ int spnc_convsp_forward(const at::Tensor qlocs_t, const at::Tensor locs_t,
     const float* kernel_size = (const float*)kernel_size_t.data_ptr();
     const float* dilation = (const float*)dilation_t.data_ptr();
     float* out = (float*)out_t.data_ptr();
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_convsp(qlocs, locs, data, neighbors, weight, bias, batch_size, M, N, nchannels, ndims,
         max_neighbors, nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, 
@@ -73,7 +73,7 @@ int spnc_convsp_backward(const at::Tensor qlocs_t, const at::Tensor locs_t,
     const float* kernel_size = (const float*)kernel_size_t.data_ptr();
     const float* dilation = (const float*)dilation_t.data_ptr();
     float* out = (float*)out_t.data_ptr();
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_convsp(qlocs, locs, data, neighbors, weight, bias, batch_size, M, N, nchannels, ndims,
         max_neighbors, nkernels, ncells, radius, kernel_size, dilation, dis_norm, kernel_fn, 
@@ -106,7 +106,7 @@ int spnc_convsdf_forward(const at::Tensor locs_t, const at::Tensor idxs_t,
     const float* kernel_size = (const float*)kernel_size_t.data_ptr();
     const float* dilation = (const float*)dilation_t.data_ptr();
     float* out = (float*)out_t.data_ptr();
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_convsdf(locs, batch_size, N, ndims, idxs, poses, scales, M, pose_len, sdfs, 
         sdf_offsets, sdf_shapes, weight, bias, nkernels, ncells, kernel_size, dilation, 
@@ -143,7 +143,7 @@ int spnc_convsdf_backward(const at::Tensor locs_t, const at::Tensor idxs_t,
     const float* kernel_size = (const float*)kernel_size_t.data_ptr();
     const float* dilation = (const float*)dilation_t.data_ptr();
     float* out = (float*)out_t.data_ptr();
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     // Computing dposes will cause lots of thread clashes, so only compute it if absolutely necessary.
     if(dposes_t.sizes()[0] != batch_size)
@@ -171,7 +171,7 @@ int spnc_hashgrid_order(at::Tensor locs_t,
     const int batch_size = locs_t.sizes()[0];
     const int N = locs_t.sizes()[1];
     const int ndims = locs_t.sizes()[2];
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_hashgrid_order(locs, low, grid_dims, cellIDs, idxs,
         buffer, batch_size, N, ndims, cellEdge, stream);
@@ -203,7 +203,7 @@ int spnc_compute_collisions(at::Tensor qlocs_t,
     const int ndims = locs_t.sizes()[2];
     const int max_collisions = collisions_t.sizes()[2];
     const int ncells = cellStarts_t.sizes()[1];
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_compute_collisions(qlocs, locs, low, grid_dims, cellIDs, cellStarts,
         cellEnds, collisions, batch_size, M, N, ndims, max_collisions, 
@@ -232,7 +232,7 @@ int spnc_reorder_data(at::Tensor locs_t,
         data = (float*)data_t.data_ptr();
         ndata = (float*)ndata_t.data_ptr();
     }
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_reorder_data(
             locs,
@@ -250,7 +250,7 @@ int spnc_reorder_data(at::Tensor locs_t,
 
 size_t spnc_get_radixsort_buffer_size(void)
 {
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     return get_radixsort_buffer_size(stream);
 }
 
@@ -268,7 +268,7 @@ int spnc_particleprojection_forward(at::Tensor locs_t,
     const int N = locs_t.sizes()[1];
     const int width = depth_mask_t.sizes()[2];
     const int height = depth_mask_t.sizes()[1];
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_particleprojection(locs,
                                    camera_fl,
@@ -300,7 +300,7 @@ int spnc_particleprojection_backward(at::Tensor locs_t,
     const int N = locs_t.sizes()[1];
     const int width = depth_mask_t.sizes()[2];
     const int height = depth_mask_t.sizes()[1];
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_particleprojection(locs,
                                    camera_fl,
@@ -332,7 +332,7 @@ int spnc_imageprojection_forward(at::Tensor locs_t,
     const int width = image_t.sizes()[3];
     const int height = image_t.sizes()[2];
     const int channels = image_t.sizes()[1];
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_imageprojection(locs,
                                    image,
@@ -368,7 +368,7 @@ int spnc_imageprojection_backward(at::Tensor locs_t,
     const int width = image_t.sizes()[3];
     const int height = image_t.sizes()[2];
     const int channels = image_t.sizes()[1];
-    cudaStream_t stream = THCState_getCurrentStream(at::globalContext().getTHCState());
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     return cuda_imageprojection(locs,
                                    image,
