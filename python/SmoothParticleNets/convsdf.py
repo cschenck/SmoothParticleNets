@@ -9,6 +9,8 @@ import _ext
 import _extc
 import error_checking as ec
 
+import pdb
+
 
 class ConvSDF(torch.nn.Module):
     """ TODO
@@ -122,7 +124,7 @@ class ConvSDF(torch.nn.Module):
 
         Returns: A BxNxO tensor where O is the number of output features.
         """
-
+        
         # Error checking.
         batch_size = locs.size()[0]
         N = locs.size()[1]
@@ -139,9 +141,11 @@ class ConvSDF(torch.nn.Module):
         scales = scales.contiguous()
 
         # Do the compution.
-        convsdf = _ConvSDFFunction(self.sdfs, self.sdf_offsets, self.sdf_shapes,
-                                   self.kernel_size, self.dilation, self.max_distance, self.compute_pose_grads)
-        return convsdf(locs, idxs, poses, scales, self.weight, self.bias)
+        # convsdf = _ConvSDFFunction(self.sdfs, self.sdf_offsets, self.sdf_shapes,
+        #                           self.kernel_size, self.dilation, self.max_distance, self.compute_pose_grads)    
+        # pdb.set_trace()
+        return _ConvSDFFunction.apply(locs, idxs, poses, scales, self.weight, self.bias, self.sdfs, 
+                self.sdf_offsets, self.sdf_shapes, self.kernel_size, self.dilation, self.max_distance, self.compute_pose_grads)
 
 
 """
@@ -153,38 +157,44 @@ INTERNAL FUNCTIONS
 
 class _ConvSDFFunction(torch.autograd.Function):
 
-    def __init__(self, sdfs, sdf_offsets, sdf_shapes, kernel_size, dilation, max_distance, compute_pose_grads):
-        super(_ConvSDFFunction, self).__init__()
-        self.sdfs = sdfs
-        self.sdf_offsets = sdf_offsets
-        self.sdf_shapes = sdf_shapes
-        self.kernel_size = kernel_size
-        self.dilation = dilation
-        self.max_distance = max_distance
-        self.compute_pose_grads = compute_pose_grads
-
-    def forward(self, locs, idxs, poses, scales, weight, bias):
-        self.save_for_backward(locs, idxs, poses, scales, weight, bias)
+     #def __init__(self, sdfs, sdf_offsets, sdf_shapes, kernel_size, dilation, max_distance, compute_pose_grads):
+     #   super(_ConvSDFFunction, self).__init__()
+     #   self.sdfs = sdfs
+     #   self.sdf_offsets = sdf_offsets
+     #   self.sdf_shapes = sdf_shapes
+     #   self.kernel_size = kernel_size
+     #   self.dilation = dilation
+     #   self.max_distance = max_distance
+     #   self.compute_pose_grads = compute_pose_grads 
+    
+    @staticmethod
+    def forward(ctx, locs, idxs, poses, scales, weight, bias, sdfs, sdf_offsets, sdf_shapes, kernel_size,
+            dilation, max_distance, compute_pose_grads):
+        
+        ctx.save_for_backward(locs, idxs, poses, scales, weight, bias, sdfs, sdf_offsets, sdf_shapes, 
+                kernel_size, dilation, max_distance, compute_pose_grads)
         batch_size = locs.size()[0]
         N = locs.size()[1]
         nkernels = weight.size()[0]
-        ret = self.sdfs.new(batch_size, N, nkernels)
+        ret = sdfs.new(batch_size, N, nkernels)
         ret.fill_(0)
         if locs.is_cuda:
-            if not _extc.spnc_convsdf_forward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
-                                              self.sdf_shapes, weight, bias, self.kernel_size, self.dilation,
-                                              self.max_distance, ret):
+            if not _extc.spnc_convsdf_forward(locs, idxs, poses, scales, sdfs, sdf_offsets,
+                                              sdf_shapes, weight, bias, kernel_size, dilation,
+                                              max_distance, ret):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsdf_forward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
-                                     self.sdf_shapes, weight, bias, self.kernel_size, self.dilation,
-                                     self.max_distance, ret)
+            _ext.spn_convsdf_forward(locs, idxs, poses, scales, sdfs, sdf_offsets,
+                                     sdf_shapes, weight, bias, kernel_size, dilation,
+                                     max_distance, ret)
 
         return ret
-
+    
+    @staticmethod
     def backward(self, grad_output):
+        pdb.set_trace()
         grad_output = grad_output.contiguous()
-        locs, idxs, poses, scales, weight, bias = self.saved_tensors
+        locs, idxs, poses, scales, weight, bias, sdfs, sdf_offsets, sdf_shapes, kernel_size, dilation, max_distance, compute_pose_grads = self.saved_tensors
         ret_locs = grad_output.new(locs.size())
         ret_locs.fill_(0)
         ret_weight = grad_output.new(weight.size())
@@ -195,14 +205,14 @@ class _ConvSDFFunction(torch.autograd.Function):
             ret_poses = grad_output.new(poses.size()[0] + 1)
         ret_poses.fill_(0)
         if grad_output.is_cuda:
-            if not _extc.spnc_convsdf_backward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
-                                               self.sdf_shapes, weight, bias, self.kernel_size, self.dilation,
-                                               self.max_distance, grad_output, ret_locs, ret_weight, ret_poses):
+            if not _extc.spnc_convsdf_backward(locs, idxs, poses, scales, sdfs, sdf_offsets,
+                                               sdf_shapes, weight, bias, kernel_size, dilation,
+                                               max_distance, grad_output, ret_locs, ret_weight, ret_poses):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsdf_backward(locs, idxs, poses, scales, self.sdfs, self.sdf_offsets,
-                                      self.sdf_shapes, weight, bias, self.kernel_size, self.dilation,
-                                      self.max_distance, grad_output, ret_locs, ret_weight, ret_poses)
+            _ext.spn_convsdf_backward(locs, idxs, poses, scales, sdfs, sdf_offsets,
+                                      sdf_shapes, weight, bias, kernel_size, dilation,
+                                      max_distance, grad_output, ret_locs, ret_weight, ret_poses)
 
         if not self.compute_pose_grads:
             ret_poses = grad_output.new(poses.size())
@@ -210,14 +220,16 @@ class _ConvSDFFunction(torch.autograd.Function):
 
         # TODO: There's a bug in the analytical gradients wrt rotations. Use numerical for now.
         # I cannot for the life of me get gradients through qauternion rotation right.
-        if self.compute_pose_grads:
+        if compute_pose_grads:
             # ret_poses = grad_output.new(poses.size())
             # ret_poses.fill_(0)
-            baseline = self.forward(locs, idxs, poses, scales, weight, bias)
+            baseline = forward(locs, idxs, poses, scales, weight, bias, sdfs, sdf_offsets, sdf_shapes, 
+                kernel_size, dilation, max_distance, compute_pose_grads)
             for m in range(poses.size()[1]):
                 for i in range(locs.size()[-1], poses.size()[2]):
                     poses[:, m, i] += 1e-3
-                    nn = self.forward(locs, idxs, poses, scales, weight, bias)
+                    nn = forward(locs, idxs, poses, scales, weight, bias, sdfs, sdf_offsets, sdf_shapes,
+                kernel_size, dilation, max_distance, compute_pose_grads)
                     poses[:, m, i] -= 1e-3
                     gg = (nn - baseline)/1e-3
                     ret_poses[:, m, i] = torch.sum(

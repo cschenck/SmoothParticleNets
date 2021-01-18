@@ -2,8 +2,8 @@ import argparse
 import os
 import sys
 
-from setuptools import setup
 import torch
+from setuptools import setup
 from torch.utils.cpp_extension import CppExtension, BuildExtension, CUDAExtension
 
 # Parse command line args.

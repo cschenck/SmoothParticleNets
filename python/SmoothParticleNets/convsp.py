@@ -123,13 +123,14 @@ class ConvSP(torch.nn.Module):
                     self.device_id)
 
         # Do the compution.
-        convsp = _ConvSPFunction(self.radius, self.kernel_size, self.dilation,
-                                 self.dis_norm, self.kernel_fn, self.ncells, self.nshared_device_mem)
+        # convsp = _ConvSPFunction(self.radius, self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, self.ncells, self.nshared_device_mem)
         # data.shape = BxCxN
-        data = convsp(qlocs if qlocs is not None else locs,
-                      locs, data, neighbors, self.weight, self.bias)
+        # data = convsp(qlocs if qlocs is not None else locs,
+        #              locs, data, neighbors, self.weight, self.bias)
         # data.shape = BxOxN
-        return data
+        return _ConvSPFunction.apply(qlocs if qlocs is not None else locs, locs, data,
+                neighbors, self.weight, self.bias, self.radius, self.kernel_size, 
+                self.dilation, self.dis_norm, self.kernel_fn, self.ncells, self.nshared_device_mem)
 
 
 """
@@ -140,41 +141,43 @@ INTERNAL FUNCTIONS
 
 
 class _ConvSPFunction(torch.autograd.Function):
+    
+    #def __init__(self, radius, kernel_size, dilation, dis_norm, kernel_fn,
+    #             ncells, nshared_device_mem=-1):
+    #    super(_ConvSPFunction, self).__init__()
+    #    self.radius = radius
+    #    self.kernel_size = kernel_size
+    #    self.dilation = dilation
+    #    self.dis_norm = dis_norm
+    #    self.kernel_fn = kernel_fn
+    #    self.ncells = ncells
+    #    self.nshared_device_mem = nshared_device_mem
 
-    def __init__(self, radius, kernel_size, dilation, dis_norm, kernel_fn,
-                 ncells, nshared_device_mem=-1):
-        super(_ConvSPFunction, self).__init__()
-        self.radius = radius
-        self.kernel_size = kernel_size
-        self.dilation = dilation
-        self.dis_norm = dis_norm
-        self.kernel_fn = kernel_fn
-        self.ncells = ncells
-        self.nshared_device_mem = nshared_device_mem
-
-    def forward(self, qlocs, locs, data, neighbors, weight, bias):
-        self.save_for_backward(qlocs, locs, data, neighbors, weight, bias)
+    @staticmethod
+    def forward(self, qlocs, locs, data, neighbors, weight, bias, radius, kernel_size, dilation, dis_norm, kernel_fn, ncells, nshared_device_mem=-1):
+        self.save_for_backward(qlocs, locs, data, neighbors, weight, bias, radius, kernel_size, dilation, dis_norm, kernel_fn, ncells, nshared_device_mem)
         batch_size = locs.size()[0]
         M = qlocs.size()[1]
         nkernels = weight.size()[0]
         ret = data.new(batch_size, M, nkernels)
         ret.fill_(0)
         if locs.is_cuda:
-            if not _extc.spnc_convsp_forward(qlocs, locs, data, neighbors, weight, bias, self.radius,
-                                             self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret,
-                                             self.nshared_device_mem):
+            if not _extc.spnc_convsp_forward(qlocs, locs, data, neighbors, weight, bias, radius,
+                                             kernel_size, dilation, dis_norm, kernel_fn, ret,
+                                             nshared_device_mem):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_forward(qlocs, locs, data, neighbors, weight, bias, self.radius,
-                                    self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn, ret)
+            _ext.spn_convsp_forward(qlocs, locs, data, neighbors, weight, bias, radius,
+                                    kernel_size, dilation, dis_norm, kernel_fn, ret)
 
         # Add the bias.
         ret += bias.view(1, 1, nkernels)
 
         return ret
-
+    
+    # @staticmethod
     def backward(self, grad_output):
-        qlocs, locs, data, neighbors, weight, bias = self.saved_tensors
+        qlocs, locs, data, neighbors, weight, bias, radius, kernel_size, dilation, dis_norm, kernel_fn, ncells, nshared_device_mem = self.saved_tensors
         ret_qlocs = grad_output.new(qlocs.size())
         ret_qlocs.fill_(0)
         ret_locs = grad_output.new(locs.size())
@@ -184,14 +187,14 @@ class _ConvSPFunction(torch.autograd.Function):
         ret_weight = grad_output.new(weight.size())
         ret_weight.fill_(0)
         if grad_output.is_cuda:
-            if not _extc.spnc_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius,
-                                              self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn,
+            if not _extc.spnc_convsp_backward(qlocs, locs, data, neighbors, weight, bias, radius,
+                                              kernel_size, dilation, dis_norm, kernel_fn,
                                               grad_output, ret_qlocs, ret_locs, ret_data, ret_weight,
-                                              self.nshared_device_mem):
+                                              nshared_device_mem):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_convsp_backward(qlocs, locs, data, neighbors, weight, bias, self.radius,
-                                     self.kernel_size, self.dilation, self.dis_norm, self.kernel_fn,
+            _ext.spn_convsp_backward(qlocs, locs, data, neighbors, weight, bias, radius,
+                                     kernel_size, dilation, dis_norm, kernel_fn,
                                      grad_output, ret_qlocs, ret_locs, ret_data, ret_weight)
         # PyTorch requires gradients for each input, but we don't care about the
         # gradients for neighbors, so set that to all 0s.

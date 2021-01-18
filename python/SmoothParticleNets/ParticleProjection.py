@@ -163,14 +163,15 @@ INTERNAL FUNCTIONS
 
 
 class _ParticleProjectionFunction(torch.autograd.Function):
-
+    
     def __init__(self, camera_fl, camera_size, filter_std, filter_scale):
         super(_ParticleProjectionFunction, self).__init__()
         self.camera_fl = camera_fl
         self.camera_size = camera_size
         self.filter_std = filter_std
         self.filter_scale = filter_scale
-
+    
+    # @staticmethod
     def forward(self, locs, depth_mask):
         self.save_for_backward(locs, depth_mask)
         batch_size = locs.size()[0]
@@ -185,7 +186,7 @@ class _ParticleProjectionFunction(torch.autograd.Function):
                                                 self.filter_std, self.filter_scale, depth_mask, ret)
 
         return ret
-
+    # @staticmethod
     def backward(self, grad_output):
         locs, depth_mask = self.saved_tensors
         ret_locs = grad_output.new(locs.size())

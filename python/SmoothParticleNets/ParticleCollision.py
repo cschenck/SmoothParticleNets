@@ -50,8 +50,7 @@ class ReorderData(torch.nn.Module):
         idxs = idxs.contiguous()
 
         # Do the compution.
-        coll = _ReorderDataFunction(self.reverse)
-        locs, data = coll(idxs, locs, data)
+        locs, data = _ReorderDataFunction.apply(idxs, locs, data, self.reverse)
         if no_data:
             return locs
         else:
@@ -181,9 +180,11 @@ class ParticleCollision(torch.nn.Module):
         grid_dims = grid_dims.contiguous()
 
         # Get the new hashgrid order.
-        hashorder = _HashgridOrderFunction(self.radius, self.max_grid_dim, self.cellIDs,
-                                           self.cuda_buffer)
-        idxs = hashorder(locs, lower_bounds, grid_dims)
+        # hashorder = _HashgridOrderFunction(self.radius, self.max_grid_dim, self.cellIDs,
+        #                                   self.cuda_buffer)
+        # idxs = hashorder(locs, lower_bounds, grid_dims)
+        idxs = _HashgridOrderFunction.apply(locs, lower_bounds, grid_dims, self.radius, self.max_grid_dim, 
+                self.cellIDs, self.cuda_buffer)
 
         # Reorder the locs and data.
         if has_data:
@@ -192,10 +193,11 @@ class ParticleCollision(torch.nn.Module):
             locs = self.reorder(idxs, locs)
 
         # Do the collision compution.
-        coll = _ParticleCollisionFunction(self.radius, self.max_collisions, self.cellIDs,
-                                          self.cellStarts, self.cellEnds, self.include_self)
-        neighbors = coll(qlocs if qlocs is not None else locs,
-                         locs, lower_bounds, grid_dims)
+        # coll = _ParticleCollisionFunction(self.radius, self.max_collisions, self.cellIDs,
+        #                                  self.cellStarts, self.cellEnds, self.include_self)
+        neighbors = _ParticleCollisionFunction.apply(qlocs if qlocs is not None else locs,
+                         locs, lower_bounds, grid_dims, self.radius, self.max_collisions, 
+                         self.cellIDs, self.cellStarts, self.cellEnds, self.include_self)
 
         if has_data:
             return locs, data, idxs, neighbors
@@ -211,7 +213,6 @@ INTERNAL FUNCTIONS
 
 
 class _HashgridOrderFunction(torch.autograd.Function):
-
     def __init__(self, radius, max_grid_dim, cellIDs, cuda_buffer):
         super(_HashgridOrderFunction, self).__init__()
         self.radius = radius
@@ -219,22 +220,23 @@ class _HashgridOrderFunction(torch.autograd.Function):
         self.cellIDs = cellIDs
         self.cuda_buffer = cuda_buffer
 
-    def forward(self, locs, lower_bounds, grid_dims):
+    @staticmethod
+    def forward(self, locs, lower_bounds, grid_dims, radius, max_grid_dim, cellIDs, cuda_buffer):
         self.save_for_backward(locs, lower_bounds, grid_dims)
         batch_size = locs.size()[0]
         N = locs.size()[1]
         idxs = locs.new(batch_size, N)
-        self.cellIDs.fill_(0)
+        cellIDs.fill_(0)
         if locs.is_cuda:
             if not _extc.spnc_hashgrid_order(locs, lower_bounds, grid_dims,
-                                             self.cellIDs, idxs, self.cuda_buffer, self.radius):
+                                             cellIDs, idxs, cuda_buffer, radius):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_hashgrid_order(locs, lower_bounds, grid_dims,
-                                    self.cellIDs, idxs, self.radius)
+            _ext.spn_hashgrid_order(locs, lower_bounds, grid_dims, cellIDs, idxs, radius)
 
         return idxs
 
+    @staticmethod
     def backward(self, grad_idxs):
         locs, lower_bounds, grid_dims = self.saved_tensors
         return (
@@ -255,25 +257,28 @@ class _ParticleCollisionFunction(torch.autograd.Function):
         self.cellEnds = cellEnds
         self.include_self = include_self
 
-    def forward(self, qlocs, locs, lower_bounds, grid_dims):
-        self.save_for_backward(qlocs, locs, lower_bounds, grid_dims)
+    @staticmethod
+    def forward(self, qlocs, locs, lower_bounds, grid_dims, radius, max_collisions, cellIDs, cellStarts, cellEnds, include_self):
+        self.save_for_backward(qlocs, locs, lower_bounds, grid_dims, radius, max_collisions, cellIDs, cellStarts,
+                cellEnds, include_self)
         batch_size = locs.size()[0]
         M = qlocs.size()[1]
-        neighbors = locs.new(batch_size, M, self.max_collisions)
+        neighbors = locs.new(batch_size, M, max_collisions)
         neighbors.fill_(-1)
-        self.cellStarts.fill_(0)
-        self.cellEnds.fill_(0)
+        cellStarts.fill_(0)
+        cellEnds.fill_(0)
         if locs.is_cuda:
-            if not _extc.spnc_compute_collisions(qlocs, locs, lower_bounds, grid_dims, self.cellIDs,
-                                                 self.cellStarts, self.cellEnds, neighbors, self.radius, self.radius,
-                                                 self.include_self):
+            if not _extc.spnc_compute_collisions(qlocs, locs, lower_bounds, grid_dims, cellIDs,
+                                                 cellStarts, cellEnds, neighbors, radius, radius,
+                                                 include_self):
                 raise Exception("Cuda error")
         else:
             _ext.spn_compute_collisions(qlocs, locs, lower_bounds, grid_dims, self.cellIDs,
                                         self.cellStarts, self.cellEnds, neighbors, self.radius, self.radius, self.include_self)
 
         return neighbors
-
+    
+    @staticmethod
     def backward(self, grad_neighbors):
         qlocs, locs, lower_bounds, grid_dims = self.saved_tensors
         return (
@@ -288,27 +293,28 @@ class _ReorderDataFunction(torch.autograd.Function):
     def __init__(self, reverse):
         super(_ReorderDataFunction, self).__init__()
         self.reverse = reverse
-
-    def forward(self, idxs, locs, data):
-        self.save_for_backward(idxs,)
+    
+    @staticmethod
+    def forward(self, idxs, locs, data, reverse):
+        self.save_for_backward(idxs,reverse)
         nlocs = locs.new(*locs.size())
         ndata = locs.new(*data.size())
         if locs.is_cuda:
-            if not _extc.spnc_reorder_data(locs, data, idxs, nlocs, ndata, self.reverse):
+            if not _extc.spnc_reorder_data(locs, data, idxs, nlocs, ndata, reverse):
                 raise Exception("Cuda error")
         else:
-            _ext.spn_reorder_data(locs, data, idxs, nlocs, ndata, self.reverse)
+            _ext.spn_reorder_data(locs, data, idxs, nlocs, ndata, reverse)
         return nlocs, ndata
-
+    @staticmethod
     def backward(self, grad_locs, grad_data):
-        idxs, = self.saved_tensors
+        idxs,reverse = self.saved_tensors
         nlocs = grad_locs.new(*grad_locs.size())
         ndata = grad_data.new(*grad_data.size())
         if grad_locs.is_cuda:
             if not _extc.spnc_reorder_data(grad_locs, grad_data, idxs, nlocs,
-                                           ndata, 1 - self.reverse):
+                                           ndata, 1 - reverse):
                 raise Exception("Cuda error")
         else:
             _ext.spn_reorder_data(grad_locs, grad_data, idxs, nlocs, ndata,
-                                  1 - self.reverse)
+                                  1 - reverse)
         return idxs.new(idxs.size()).fill_(0), nlocs, ndata

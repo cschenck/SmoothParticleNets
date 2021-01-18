@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "../external/cub-1.3.2/cub/cub.cuh"
+#include "cub/cub.cuh"
 
 #define CUDA
 #include "common_funcs.h"

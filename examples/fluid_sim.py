@@ -15,6 +15,8 @@ import torch
 from torch.autograd import Variable
 import torch.nn as nn
 
+import pdb
+
 NSUBSTEPS = 1
 DT = 1.0/60
 STIFFNESS = 2.99e-11
@@ -264,6 +266,7 @@ class FluidSim(nn.Module):
 
     def _fix_static_collisions(self, locs, idxs, poses, scales, collisionDistance):
         ret = locs
+
         mtd = self.convsdfcol(ret, idxs, poses, scales) + collisionDistance
         intersect = self.relu(
             mtd) + self.relu(-self.relu(-(mtd - 0.5)) + 0.5)*0.0
@@ -281,14 +284,13 @@ class FluidSim(nn.Module):
             #globals()[p] = getattr(self, "_"+p)*scale
             val = getattr(self, "_"+p)*scale
             exec("%s = val" % p)
-
         delta = (new_locs - locs)/numStaticIterations
         for _ in range(numStaticIterations):
             locs = locs + delta
             locs = self._fix_static_collisions(locs, idxs, poses,
                                                scales, collisionDistance)
         return locs
-
+    
     def forward(self, locs, vel, idxs, poses, last_poses, scales, extra_constraints=None):
         """
         Compute one forward timestep of the fluid simulation. It takes as input the current
@@ -332,12 +334,15 @@ class FluidSim(nn.Module):
             globals()[p] = val
         dt = self._dt
         dt /= nSubsteps
-
+        
         if self.ones is None or self.ones.size()[:-1] != locs.size()[:-1]:
-            self.ones.data.resize_(locs.size()[:-1] + (1,)).fill_(1)
+            with torch.no_grad():
+                self.ones.resize_(locs.size()[:-1] + (1,)).fill_(1)
 
+        
         _poses = last_poses
         for substep in range(nSubsteps):
+            # pdb.set_trace()
             _last_poses = _poses
             _poses = self._interp_poses(
                 last_poses, poses, 1.0*(1 + substep)/nSubsteps)
@@ -363,7 +368,6 @@ class FluidSim(nn.Module):
             new_locs, vel, pidxs, neighbors = self.coll(new_locs, vel)
 
             for iteration in range(numIterations):
-
                 density = self.spiky1(new_locs, self.ones, neighbors)
                 nj = self.dspikyDnormd(new_locs, new_locs, neighbors)
                 ni = new_locs*self.dspiky1normd(new_locs, self.ones, neighbors)
@@ -471,7 +475,7 @@ def main():
     spnet = FluidSim([torch.from_numpy(bounds_sdf["sdf"])], [
                      bounds_sdf["sdf_size"]], radius=0.1, ndim=3)
     spnet = spnet.cuda()
-
+    
     locs = torch.rand(1, 1000, 3).cuda()
     locs[:, :, 1] += 4.0
     vel = torch.zeros(1, 1000, 3).cuda()
@@ -480,6 +484,7 @@ def main():
     obj_poses = torch.zeros(1, 1, 7).cuda()
     obj_poses[:, :, -1] = 1.0
     while True:
+        # pdb.set_trace()
         locs, vel = spnet(locs, vel, idxs, obj_poses, obj_poses, scales)
         print(locs[0, ...].mean(0))
 

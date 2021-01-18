@@ -166,11 +166,12 @@ INTERNAL FUNCTIONS
 
 
 class _ImageProjectionFunction(torch.autograd.Function):
-
+    
     def __init__(self, camera_fl):
         super(_ImageProjectionFunction, self).__init__()
         self.camera_fl = camera_fl
-
+    
+    # @staticmethod
     def forward(self, locs, image, depth_mask):
         self.save_for_backward(locs, image, depth_mask)
         batch_size = locs.size()[0]
@@ -187,7 +188,8 @@ class _ImageProjectionFunction(torch.autograd.Function):
                                              self.camera_fl, depth_mask, ret)
 
         return ret
-
+    
+    # @staticmethod
     def backward(self, grad_output):
         locs, image, depth_mask = self.saved_tensors
         ret_locs = grad_output.new(locs.size())
